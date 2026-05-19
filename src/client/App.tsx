@@ -500,28 +500,14 @@ function CasesWorkspace({ cases, rules, refresh }: { cases: CaseRecord[]; rules:
   );
 }
 
-function TopRules({ stats }: { stats: DashboardStats }) {
+function SettingsPopover({ settings, open }: { settings: RulePilotSettings; open: boolean }) {
+  if (!open) return null;
   return (
-    <section className="rules-panel"><div className="panel-heading"><div><h2>Top Matches</h2><span>Last 75 cases</span></div></div>
-      <div className="rule-list">{stats.topRules.length ? stats.topRules.map((r) => <div className="rule-row" key={r.ruleId}><span>{r.title}</span><strong>{r.count}</strong></div>) : <div className="empty-row">No cases yet</div>}</div>
-    </section>
-  );
-}
-
-function EnabledRuleList({ rules }: { rules: RuleConfigV2[] }) {
-  const enabled = rules.filter((r) => r.enabled);
-  return (
-    <section className="rules-panel"><div className="panel-heading"><div><h2>Enabled Rules</h2><span>{enabled.length} active</span></div></div>
-      <div className="rule-list">{enabled.map((r) => <div className="rule-row" key={r.id}><span>{r.title}</span><strong>{pct(r.threshold)}</strong></div>)}</div>
-    </section>
-  );
-}
-
-function SettingsSummary({ settings }: { settings: RulePilotSettings }) {
-  return (
-    <section className="settings-strip" aria-label="Current RulePilot settings">
-      <span>Mode: {settings.scanMode}</span><span>LLM: {settings.llmEnabled ? settings.openAiModel : 'off'}</span>
-      <span>Threshold: {pct(settings.confidenceThreshold)}</span><span>{settings.timezone}</span>
+    <section className="settings-popover" aria-label="Current RulePilot settings">
+      <div><span>Mode</span><strong>{settings.scanMode}</strong></div>
+      <div><span>LLM</span><strong>{settings.llmEnabled ? settings.openAiModel : 'off'}</strong></div>
+      <div><span>Threshold</span><strong>{pct(settings.confidenceThreshold)}</strong></div>
+      <div><span>Timezone</span><strong>{settings.timezone}</strong></div>
     </section>
   );
 }
@@ -880,13 +866,7 @@ function RuleStudioRow({ rule, onEdit, onToggle, onDelete }: { rule: RuleConfigV
         <label className="toggle-switch"><input type="checkbox" checked={rule.enabled} onChange={(e) => onToggle(e.target.checked)} /><span className="toggle-track" /></label>
         <div className="rs-row-info">
           <strong>{rule.title}</strong>
-          <span className="rs-row-meta">
-            <span className={`status-pill action-${routingActionStatusClass(rule.action)}`}>{routingActionLabel(rule.action)}</span>
-            <span className="rs-category-pill">{categoryLabels[rule.category]}</span>
-            <span>{pct(rule.threshold)}</span>
-            {rule.source === 'preset' && <span className="rs-preset-badge">Preset</span>}
-            <span>{rule.conditions.length} condition{rule.conditions.length !== 1 ? 's' : ''}</span>
-          </span>
+          <span className={`status-pill action-${routingActionStatusClass(rule.action)}`}>{routingActionLabel(rule.action)}</span>
         </div>
       </div>
       <div className="rs-row-actions">
@@ -897,12 +877,18 @@ function RuleStudioRow({ rule, onEdit, onToggle, onDelete }: { rule: RuleConfigV
   );
 }
 
-function RuleStudio({ rules, refresh, timezone }: { rules: RuleConfigV2[]; refresh: () => Promise<void>; timezone: string }) {
+function RuleStudio({ rules, refresh, timezone, createRequest }: { rules: RuleConfigV2[]; refresh: () => Promise<void>; timezone: string; createRequest: number }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [drafts, setDrafts] = useState<RuleConfigV2[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (createRequest === 0) return;
+    setCreating(true);
+    setEditingId(null);
+  }, [createRequest]);
 
   const handleToggle = async (ruleId: string, enabled: boolean) => {
     setError(null);
@@ -1012,12 +998,6 @@ function RuleStudio({ rules, refresh, timezone }: { rules: RuleConfigV2[]; refre
     <section className="rule-studio">
       <div className="rs-header">
         <div><h2>Rule Studio</h2><span>{rules.length} rules</span></div>
-        <div className="rs-header-actions">
-          <button className="secondary-button" onClick={handleImport}>Import</button>
-          <button className="secondary-button" onClick={() => void handleExport()}>Export</button>
-          <button className="secondary-button" onClick={() => void handleAddEducationPack()}>Add Education Pack</button>
-          <button className="primary-button" onClick={() => { setCreating(true); setEditingId(null); }}>+ New Rule</button>
-        </div>
       </div>
       {error ? <div className="rule-studio-error" role="alert">{error}</div> : null}
       <RuleBuilder
@@ -1057,6 +1037,11 @@ function RuleStudio({ rules, refresh, timezone }: { rules: RuleConfigV2[]; refre
         ))}
         {rules.length === 0 && <div className="empty-panel"><strong>No rules yet</strong><span>Create a new rule or install the r/csMajors starter pack.</span></div>}
       </div>
+      <div className="rs-footer-actions">
+        <button className="secondary-button" onClick={handleImport}>Import</button>
+        <button className="secondary-button" onClick={() => void handleExport()}>Export</button>
+        <button className="secondary-button" onClick={() => void handleAddEducationPack()}>Add Education Pack</button>
+      </div>
     </section>
   );
 }
@@ -1066,6 +1051,8 @@ function RuleStudio({ rules, refresh, timezone }: { rules: RuleConfigV2[]; refre
 function Dashboard({ cases, stats, settings, rules, refresh }: { cases: CaseRecord[]; stats: DashboardStats; settings: RulePilotSettings; rules: RuleConfigV2[]; refresh: () => Promise<void> }) {
   const [tab, setTab] = useState<DashboardTab>('cases');
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [createRuleRequest, setCreateRuleRequest] = useState(0);
   const shellRef = useRef<HTMLElement | null>(null);
   const newest = useMemo(() => cases.slice(0, 25), [cases]);
 
@@ -1098,6 +1085,11 @@ function Dashboard({ cases, stats, settings, rules, refresh }: { cases: CaseReco
     }
   };
 
+  const startNewRule = () => {
+    setTab('rule-studio');
+    setCreateRuleRequest((value) => value + 1);
+  };
+
   return (
     <main ref={shellRef} className={isFullscreen ? 'app-shell fullscreen-shell' : 'app-shell'}>
       <header className="topbar">
@@ -1108,20 +1100,44 @@ function Dashboard({ cases, stats, settings, rules, refresh }: { cases: CaseReco
         </nav>
         <div className="topbar-actions">
           <button className="secondary-button" onClick={() => void toggleFullscreen()}>{isFullscreen ? 'Exit full screen' : 'Full screen'}</button>
-          <button className="primary-button" onClick={() => void refresh()}>Refresh</button>
+          <button aria-label="Refresh dashboard" className="secondary-button icon-button" onClick={() => void refresh()} type="button">
+            <svg aria-hidden="true" viewBox="0 0 24 24">
+              <path d="M20 6v5h-5" />
+              <path d="M4 18v-5h5" />
+              <path d="M18 11a6 6 0 0 0-10-4.5L4 10" />
+              <path d="M6 13a6 6 0 0 0 10 4.5l4-3.5" />
+            </svg>
+          </button>
+          <button
+            aria-expanded={settingsOpen}
+            aria-label="Open settings summary"
+            className="secondary-button icon-button"
+            onClick={() => setSettingsOpen((value) => !value)}
+            type="button"
+          >
+            <svg aria-hidden="true" viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a8 8 0 0 0 .1-1.2l2-1.5-2-3.4-2.4 1a7.8 7.8 0 0 0-2-1.1L14.8 6h-4l-.4 2.8a7.8 7.8 0 0 0-2 1.1l-2.4-1-2 3.4 2 1.5a8 8 0 0 0 0 2.4l-2 1.5 2 3.4 2.4-1a7.8 7.8 0 0 0 2 1.1l.4 2.8h4l.4-2.8a7.8 7.8 0 0 0 2-1.1l2.4 1 2-3.4-2-1.5a8 8 0 0 0-.2-1.2Z" />
+            </svg>
+          </button>
+          <button aria-label="Create new rule" className="primary-button icon-button create-rule-button" onClick={startNewRule} type="button">
+            <svg aria-hidden="true" viewBox="0 0 24 24">
+              <path d="M12 5v14" />
+              <path d="M5 12h14" />
+            </svg>
+          </button>
+          <SettingsPopover settings={settings} open={settingsOpen} />
         </div>
       </header>
       {tab === 'cases' && (
         <>
-          <SettingsSummary settings={settings} />
           <StatBand stats={stats} />
           <div className="dashboard-grid">
             <CasesWorkspace cases={newest} rules={rules} refresh={refresh} />
-            <aside className="side-panels"><TopRules stats={stats} /><EnabledRuleList rules={rules} /></aside>
           </div>
         </>
       )}
-      {tab === 'rule-studio' && <RuleStudio rules={rules} refresh={refresh} timezone={settings.timezone} />}
+      {tab === 'rule-studio' && <RuleStudio rules={rules} refresh={refresh} timezone={settings.timezone} createRequest={createRuleRequest} />}
     </main>
   );
 }
