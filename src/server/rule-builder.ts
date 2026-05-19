@@ -135,6 +135,15 @@ const aiRuleDraft = z.object({
 
 type AiRuleDraft = z.infer<typeof aiRuleDraft>;
 type AiConditionDraft = z.infer<typeof conditionDraft>;
+type AiDraftRule = NonNullable<AiRuleDraft['draft']>;
+
+const RULE_BUILDER_SYSTEM_PROMPT = [
+  'You are RulePilot AI Builder. Draft conservative subreddit moderation rules for human moderators to review.',
+  'Only output the requested JSON shape.',
+  'The semantic condition value is later sent to the classifier as the rule-specific detection prompt.',
+  'Never write a bare semantic label like "shitpost", "spam", "rude", or "low quality".',
+  'When semantic judgment is needed, write a compact rubric with match criteria, explicit non-matches, evidence cues, and uncertainty handling.',
+].join(' ');
 
 function extractTextFromResponse(payload: unknown): string | undefined {
   if (!payload || typeof payload !== 'object') return undefined;
@@ -241,7 +250,7 @@ function compactRules(rules: RuleBuilderRequest['currentRules']): RuleBuilderReq
   }));
 }
 
-function builderPayload(request: RuleBuilderRequest): Record<string, unknown> {
+export function buildRuleBuilderPayload(request: RuleBuilderRequest): Record<string, unknown> {
   return {
     task: 'Draft one disabled RulePilot rule for moderator review.',
     mode: request.mode,
@@ -254,17 +263,57 @@ function builderPayload(request: RuleBuilderRequest): Record<string, unknown> {
       'Return needs_clarification when the moderator intent is too vague to draft one rule safely.',
       'Use deterministic conditions whenever possible: keyword, regex, post_type, flair, url_domain, title/body length, day_of_week, or time_window.',
       'Use semantic only for the narrow ambiguous part that deterministic conditions cannot express.',
+      'Semantic condition values must be classifier-ready rubrics, not labels. Include what to match, what not to match, visible evidence cues, and what to do when uncertain.',
+      'For common intents like "no shitposts", "no memes", "low-quality posts", "spam", or "rude comments", draft a conservative rule instead of asking for clarification, but make the semantic rubric narrow.',
+      'For "no shitposts", prefer deterministic signals like meme/humor keywords or flair, then add a semantic rubric that matches low-effort humor, meme formats, joke-only posts, bait, copypasta, or intentionally unserious content. Exclude sincere questions, good-faith discussions, meta posts about the rule, and posts that merely use casual language.',
       'Default action to flag unless the intent clearly asks to route/filter obvious posts.',
       'Generated rules must be disabled drafts; do not suggest bans, DMs, crawling, author-history checks, or AI-authorship detection.',
       'For redirects, fill redirectTargetType, redirectTarget, and redirectTemplate only when rerouting is explicit.',
     ],
+    semanticConditionGuidance: {
+      purpose: 'The condition.value for type=semantic becomes the future LLM classifier prompt for this rule.',
+      requiredShape: 'Detect posts for this rule. Match when: ... Do not match when: ... Evidence cues: ... If uncertain: choose needs_review or insufficient_context.',
+      avoid: ['single-word labels', 'community-insider shorthand without explanation', 'claims based on author intent or author history'],
+      exampleForNoShitposts:
+        'Detect low-effort humor or shitposts. Match when the post is primarily a meme, joke-only reaction, copypasta, bait, intentionally unserious prompt, or low-context humor rather than a substantive community discussion. Do not match sincere questions, announcements, meta discussion about the rule, or posts that only use casual wording. Evidence cues should come from title, body, flair, URL, post type, and timing only. If the post could reasonably be good-faith, use needs_review.',
+    },
   };
 }
 
-function normalizeCondition(input: AiConditionDraft): RuleCondition {
+function semanticConditionNeedsExpansion(value: string): boolean {
+  const normalized = value.trim();
+  if (normalized.length < 80) return true;
+  return !/\b(match|detect|do not match|exclude|evidence|cue|uncertain|needs_review|insufficient_context)\b/i.test(normalized);
+}
+
+function compactSentenceList(items: string[], fallback: string): string {
+  const value = items.map((item) => item.trim()).filter(Boolean).slice(0, 3).join('; ');
+  return value || fallback;
+}
+
+function expandedSemanticRubric(input: AiConditionDraft, draft: AiDraftRule): string {
+  const title = draft.title.trim();
+  const description = draft.description.trim();
+  const focus = input.value.trim();
+  const positiveExamples = compactSentenceList(draft.examples, 'posts that clearly fit the rule description');
+  const negativeExamples = compactSentenceList(draft.negativeExamples, 'good-faith, on-topic posts that only share surface wording with the rule');
+
+  return [
+    `Detect posts for rule "${title}".`,
+    `Match when: ${description}${focus ? ` Specific focus: ${focus}.` : ''}`,
+    `Positive examples: ${positiveExamples}.`,
+    `Do not match when: ${negativeExamples}.`,
+    'Evidence cues must come only from the post title, body, flair, URL/domain, post type, and configured timing.',
+    'If the evidence is weak, joking but still substantive, or missing necessary context, choose needs_review or insufficient_context rather than violation.',
+  ].join(' ').slice(0, 1000);
+}
+
+function normalizeCondition(input: AiConditionDraft, draft: AiDraftRule): RuleCondition {
   const output: RuleCondition = {
     type: input.type,
-    value: input.value.trim(),
+    value: input.type === 'semantic' && semanticConditionNeedsExpansion(input.value)
+      ? expandedSemanticRubric(input, draft)
+      : input.value.trim(),
   };
   if (input.field) output.field = input.field;
   if (input.min !== null) output.min = input.min;
@@ -293,7 +342,7 @@ function normalizeAiDraft(parsed: AiRuleDraft): RuleBuilderResponse {
     threshold: draft.threshold,
     category: draft.category,
     enabled: false,
-    conditions: draft.conditions.map(normalizeCondition),
+    conditions: draft.conditions.map((condition) => normalizeCondition(condition, draft)),
     createdAt: now,
     updatedAt: now,
     source: 'custom',
@@ -342,11 +391,11 @@ export async function draftRuleWithOpenAI(options: {
         {
           role: 'system',
           content:
-            'You are RulePilot AI Builder. Draft conservative subreddit moderation rules for human moderators to review. Only output the requested JSON shape.',
+            RULE_BUILDER_SYSTEM_PROMPT,
         },
         {
           role: 'user',
-          content: JSON.stringify(builderPayload(options.request)),
+          content: JSON.stringify(buildRuleBuilderPayload(options.request)),
         },
       ],
       text: {

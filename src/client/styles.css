@@ -822,14 +822,14 @@ a:hover {
 .rule-builder {
   border-bottom: 1px solid var(--rp-neutral-border-weak);
   display: grid;
-  gap: 12px;
-  padding: 14px;
+  gap: 22px;
+  padding: 28px;
 }
 
 .rule-builder-heading {
   align-items: center;
   display: flex;
-  gap: 12px;
+  gap: 20px;
   justify-content: space-between;
 }
 
@@ -848,7 +848,7 @@ a:hover {
 
 .builder-template-grid {
   display: grid;
-  gap: 8px;
+  gap: 16px;
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
@@ -859,9 +859,9 @@ a:hover {
   color: var(--rp-neutral-content);
   cursor: pointer;
   display: grid;
-  gap: 4px;
-  min-height: 74px;
-  padding: 10px;
+  gap: 12px;
+  min-height: 108px;
+  padding: 18px 20px;
   text-align: left;
 }
 
@@ -872,20 +872,26 @@ a:hover {
 
 .builder-template strong {
   color: var(--rp-neutral-content-strong);
-  font-size: 13px;
+  font-size: 15px;
+  line-height: 1.25;
 }
 
 .builder-template span {
   color: var(--rp-neutral-content-weak);
-  font-size: 12px;
-  line-height: 1.35;
+  font-size: 13px;
+  line-height: 1.45;
 }
 
 .builder-prompt-row {
   align-items: end;
   display: grid;
-  gap: 10px;
+  gap: 14px;
   grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.builder-prompt-row .primary-button {
+  min-height: 42px;
+  padding-inline: 22px;
 }
 
 .builder-note,

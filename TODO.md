@@ -24,15 +24,12 @@ Note: Whenever more things need to be added to the todo like when you discover n
 - [ ] Create a dashboard custom post from the subreddit menu and verify moderator-only access.
 - [ ] Run the golden r/csMajors cases against the live playtest:
   - [ ] career-only post routes to r/cscareerquestions guidance;
-  - [ ] resume post routes to sticky guidance;
   - [ ] live OA question is flagged;
   - [ ] practice OA question is allowed or low-confidence;
   - [ ] Monday meme is flagged;
   - [ ] Sunday meme is allowed;
-  - [ ] laptop post matches laptop rule;
-  - [ ] college comparison matches college comparison rule;
-  - [ ] personal project post matches personal projects rule;
-  - [ ] survey, hiring, and referral posts match the approval/routing rule.
+  - [ ] disrespectful engagement post is flagged;
+  - [ ] lazy or low-quality post routes to review.
 - [ ] Record screenshots for app listing and Devpost:
   - [ ] dashboard overview;
   - [ ] case row with explanation;
@@ -53,6 +50,7 @@ Note: Whenever more things need to be added to the todo like when you discover n
   - [x] improved typography, spacing, and empty states.
   - [x] align dashboard colors with Reddit Product Language semantic theme tokens.
   - [x] Follow-up: add keyboard row navigation for the case table.
+  - [x] Give the RulePilot AI Builder controls, template cards, and prompt field more breathing room.
   - [ ] Follow-up: verify token rendering inside the live Reddit webview in both light and dark mode. (blocked: private playtest requires a logged-in approved moderator session)
     - [ ] Open `https://www.reddit.com/r/rulepilot_dev/?playtest=rulepilot` while logged in as an approved moderator.
     - [ ] Create/open the RulePilot dashboard custom post in light mode and confirm semantic tokens render correctly.
@@ -196,6 +194,10 @@ Think like we're basically giving them conditions (datetime = sunday [from datet
   - [x] schedule broad crawls;
   - [x] auto-ban users;
   - [x] claim reliable AI-generated-text detection.
+- [x] Refine AI Builder prompt generation so semantic conditions become classifier-ready rubrics:
+  - [x] tell OpenAI that `semantic` condition values are future classifier prompts, not labels;
+  - [x] add explicit no-shitposts guidance with match, non-match, evidence, and uncertainty boundaries;
+  - [x] expand weak generated semantic labels into rubrics before saving disabled drafts.
 
 ## P1: Common Rule Library
 
