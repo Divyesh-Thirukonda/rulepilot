@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client';
 
 import type {
   CaseFeedback, CaseRecord, ConditionField, ConditionType, DashboardStats,
-  DashboardTab, RuleAction, RuleCategory, RuleCondition, RuleConfigV2,
+  DashboardTab, PostType, RuleAction, RuleCategory, RuleCondition, RuleConfigV2,
   RulePilotSettings,
 } from '../shared/types';
 import './styles.css';
@@ -19,6 +19,22 @@ type LoadState =
   | { status: 'loading' }
   | { status: 'ready'; cases: CaseRecord[]; stats: DashboardStats; settings: RulePilotSettings; rules: RuleConfigV2[] }
   | { status: 'error'; message: string };
+
+type SimulatorPost = {
+  title: string;
+  body: string;
+  flairText: string;
+  url: string;
+  postType: PostType;
+  createdAt: string;
+};
+
+type SimulatorConditionResult = {
+  label: string;
+  matched: boolean;
+  signal: string;
+  semantic: boolean;
+};
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -43,6 +59,7 @@ const actionOptions: { value: RuleAction; label: string }[] = [
   { value: 'flag', label: 'Flag for review' }, { value: 'filter', label: 'Filter to mod queue' },
 ];
 const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const POST_TYPES: PostType[] = ['text', 'link', 'media', 'poll', 'crosspost'];
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -57,6 +74,142 @@ async function requireOk(response: Response, fallback: string): Promise<void> {
   if (response.ok) return;
   const body = await response.json().catch(() => undefined) as ErrorResponse | undefined;
   throw new Error(body?.error ?? `${fallback} (${response.status})`);
+}
+
+function normalizeSimulatorText(value: string | undefined): string {
+  return value?.replace(/\s+/g, ' ').trim() ?? '';
+}
+
+function conditionFieldText(post: SimulatorPost, field: ConditionField | undefined): string {
+  switch (field) {
+    case 'title':
+      return normalizeSimulatorText(post.title);
+    case 'body':
+      return normalizeSimulatorText(post.body);
+    case 'flair':
+      return normalizeSimulatorText(post.flairText);
+    case 'url':
+      return normalizeSimulatorText(post.url);
+    case 'title_and_body':
+    default:
+      return [normalizeSimulatorText(post.title), normalizeSimulatorText(post.body)].filter(Boolean).join(' \n ');
+  }
+}
+
+function simulatorTokens(value: string): string[] {
+  return value.split('|').map((token) => token.trim().toLowerCase()).filter(Boolean);
+}
+
+function simulatorDomain(url: string): string | undefined {
+  try {
+    return new URL(url).hostname.toLowerCase();
+  } catch {
+    return undefined;
+  }
+}
+
+function simulatorDay(date: Date, timezone: string): string {
+  try {
+    return new Intl.DateTimeFormat('en-US', { timeZone: timezone, weekday: 'long' }).format(date);
+  } catch {
+    return new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', weekday: 'long' }).format(date);
+  }
+}
+
+function simulatorHour(date: Date, timezone: string): number {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', { timeZone: timezone, hour: 'numeric', hour12: false }).formatToParts(date);
+    const hour = parts.find((part) => part.type === 'hour')?.value;
+    return hour ? parseInt(hour, 10) : date.getHours();
+  } catch {
+    return date.getHours();
+  }
+}
+
+function evaluateSimulatorCondition(condition: RuleCondition, post: SimulatorPost, timezone: string): SimulatorConditionResult {
+  const label = conditionTypeLabels[condition.type];
+  const date = post.createdAt ? new Date(post.createdAt) : new Date();
+  let matched = false;
+  let signal = '';
+  let semantic = false;
+
+  switch (condition.type) {
+    case 'keyword': {
+      const text = conditionFieldText(post, condition.field).toLowerCase();
+      const token = simulatorTokens(condition.value).find((candidate) => text.includes(candidate));
+      matched = token !== undefined;
+      signal = token ? `Found "${token}" in ${condition.field ?? 'title_and_body'}.` : 'No keyword or phrase matched.';
+      break;
+    }
+    case 'regex': {
+      const text = conditionFieldText(post, condition.field);
+      try {
+        const pattern = new RegExp(condition.value, 'i');
+        matched = pattern.test(text);
+        signal = matched ? `Pattern /${condition.value}/ matched.` : `Pattern /${condition.value}/ did not match.`;
+      } catch {
+        signal = 'Regex pattern is invalid.';
+      }
+      break;
+    }
+    case 'post_type': {
+      const types = simulatorTokens(condition.value);
+      matched = types.includes(post.postType);
+      signal = matched ? `Post type is ${post.postType}.` : `Post type is ${post.postType}, expected ${condition.value || 'a configured type'}.`;
+      break;
+    }
+    case 'flair': {
+      const flair = normalizeSimulatorText(post.flairText).toLowerCase();
+      const token = simulatorTokens(condition.value).find((candidate) => flair.includes(candidate));
+      matched = token !== undefined;
+      signal = token ? `Flair contains "${token}".` : 'Flair did not match.';
+      break;
+    }
+    case 'url_domain': {
+      const domain = simulatorDomain(post.url);
+      const targets = simulatorTokens(condition.value);
+      matched = domain !== undefined && targets.some((target) => domain === target || domain.endsWith(`.${target}`));
+      signal = domain ? `URL domain is ${domain}.` : 'No valid URL domain found.';
+      break;
+    }
+    case 'title_length': {
+      const length = normalizeSimulatorText(post.title).length;
+      matched = (condition.min === undefined || length >= condition.min) && (condition.max === undefined || length <= condition.max);
+      signal = `Title length is ${length} characters.`;
+      break;
+    }
+    case 'body_length': {
+      const length = normalizeSimulatorText(post.body).length;
+      matched = (condition.min === undefined || length >= condition.min) && (condition.max === undefined || length <= condition.max);
+      signal = `Body length is ${length} characters.`;
+      break;
+    }
+    case 'day_of_week': {
+      const day = simulatorDay(date, timezone);
+      matched = (condition.days ?? []).some((candidate) => candidate.toLowerCase() === day.toLowerCase());
+      signal = `Sample local day is ${day}.`;
+      break;
+    }
+    case 'time_window': {
+      const hour = simulatorHour(date, timezone);
+      matched = (condition.min === undefined || hour >= condition.min) && (condition.max === undefined || hour <= condition.max);
+      signal = `Sample local hour is ${hour}:00.`;
+      break;
+    }
+    case 'semantic':
+      semantic = true;
+      matched = false;
+      signal = `Semantic category "${condition.value || 'custom'}" requires LLM classification.`;
+      break;
+  }
+
+  const effectiveMatch = condition.negate && !semantic ? !matched : matched;
+  return {
+    label,
+    matched: effectiveMatch,
+    signal: condition.negate && !semantic ? `NOT condition: ${signal}` : signal,
+    semantic,
+  };
 }
 
 // ── Data hooks ─────────────────────────────────────────────────────────────
@@ -264,7 +417,60 @@ function TagInput({ tags, onChange, placeholder }: { tags: string[]; onChange: (
   );
 }
 
-function RuleEditor({ initial, onSave, onCancel, saving }: { initial: Partial<RuleConfigV2>; onSave: (r: Partial<RuleConfigV2>) => void; onCancel: () => void; saving: boolean }) {
+function RuleSimulator({ rule, timezone }: { rule: Partial<RuleConfigV2>; timezone: string }) {
+  const [sample, setSample] = useState<SimulatorPost>({
+    title: rule.examples?.[0] ?? 'Resume review for summer internship applications',
+    body: '',
+    flairText: '',
+    url: '',
+    postType: 'text',
+    createdAt: '2026-05-18T12:00',
+  });
+  const conditions = rule.conditions ?? [];
+  const results = useMemo(
+    () => conditions.map((condition) => evaluateSimulatorCondition(condition, sample, timezone)),
+    [conditions, sample, timezone]
+  );
+  const deterministicResults = results.filter((result) => !result.semantic);
+  const semanticCount = results.length - deterministicResults.length;
+  const deterministicMatch = deterministicResults.length > 0 && deterministicResults.every((result) => result.matched) && semanticCount === 0;
+  const deterministicPreconditionsPass = deterministicResults.length === 0 || deterministicResults.every((result) => result.matched);
+  const outcome = semanticCount > 0
+    ? (deterministicPreconditionsPass ? 'Needs LLM' : 'Preconditions missed')
+    : (deterministicMatch ? 'Would match' : 'Would not match');
+  const outcomeClass = deterministicMatch ? 'simulator-match' : semanticCount > 0 && deterministicPreconditionsPass ? 'simulator-llm' : 'simulator-miss';
+
+  return (
+    <section className="rule-simulator" aria-label="Rule simulator">
+      <div className="simulator-header">
+        <div>
+          <h3>Simulator</h3>
+          <span className="simulator-subtitle">Test this draft against one sample post before saving.</span>
+        </div>
+        <span className={`simulator-outcome ${outcomeClass}`}>{outcome}</span>
+      </div>
+      <div className="simulator-grid">
+        <label className="editor-field"><span>Sample title</span><input type="text" value={sample.title} onChange={(e) => setSample({ ...sample, title: e.target.value })} /></label>
+        <label className="editor-field"><span>Flair</span><input type="text" value={sample.flairText} onChange={(e) => setSample({ ...sample, flairText: e.target.value })} placeholder="Optional" /></label>
+        <label className="editor-field"><span>Post type</span><select value={sample.postType} onChange={(e) => setSample({ ...sample, postType: e.target.value as PostType })}>{POST_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}</select></label>
+        <label className="editor-field"><span>Local datetime</span><input type="datetime-local" value={sample.createdAt} onChange={(e) => setSample({ ...sample, createdAt: e.target.value })} /></label>
+        <label className="editor-field full"><span>Body</span><textarea rows={2} value={sample.body} onChange={(e) => setSample({ ...sample, body: e.target.value })} placeholder="Optional sample body" /></label>
+        <label className="editor-field full"><span>URL</span><input type="text" value={sample.url} onChange={(e) => setSample({ ...sample, url: e.target.value })} placeholder="https://example.com/post" /></label>
+      </div>
+      <div className="simulator-results">
+        {results.length ? results.map((result, index) => (
+          <div className={`simulator-result ${result.semantic ? 'simulator-result-llm' : result.matched ? 'simulator-result-match' : 'simulator-result-miss'}`} key={`${result.label}-${index}`}>
+            <strong>{result.semantic ? 'LLM' : result.matched ? 'Match' : 'Miss'}</strong>
+            <span>{result.label}</span>
+            <p>{result.signal}</p>
+          </div>
+        )) : <div className="simulator-empty">Add at least one condition to simulate this rule.</div>}
+      </div>
+    </section>
+  );
+}
+
+function RuleEditor({ initial, onSave, onCancel, saving, timezone }: { initial: Partial<RuleConfigV2>; onSave: (r: Partial<RuleConfigV2>) => void; onCancel: () => void; saving: boolean; timezone: string }) {
   const [form, setForm] = useState<Partial<RuleConfigV2>>({ ...initial });
   const conditions = form.conditions ?? [];
   const setConditions = (c: RuleCondition[]) => setForm({ ...form, conditions: c });
@@ -284,6 +490,7 @@ function RuleEditor({ initial, onSave, onCancel, saving }: { initial: Partial<Ru
         {conditions.map((c, i) => <ConditionRow key={i} condition={c} onChange={(nc) => { const a = [...conditions]; a[i] = nc; setConditions(a); }} onRemove={() => setConditions(conditions.filter((_, j) => j !== i))} />)}
         <button className="secondary-button add-condition-btn" type="button" onClick={() => setConditions([...conditions, emptyCondition()])}>+ Add condition</button>
       </div>
+      <RuleSimulator rule={form} timezone={timezone} />
       <label className="editor-field full"><span>Redirect guidance</span><input type="text" value={form.redirect ?? ''} onChange={(e) => setForm({ ...form, redirect: e.target.value })} placeholder="e.g. Try r/cscareerquestions for career questions" /></label>
       <label className="editor-field full"><span>Mod notes (internal)</span><textarea rows={2} value={form.modNotes ?? ''} onChange={(e) => setForm({ ...form, modNotes: e.target.value })} placeholder="Internal notes only visible to moderators" /></label>
       <div className="editor-actions">
@@ -318,7 +525,7 @@ function RuleStudioRow({ rule, onEdit, onToggle, onDelete }: { rule: RuleConfigV
   );
 }
 
-function RuleStudio({ rules, refresh }: { rules: RuleConfigV2[]; refresh: () => Promise<void> }) {
+function RuleStudio({ rules, refresh, timezone }: { rules: RuleConfigV2[]; refresh: () => Promise<void>; timezone: string }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -413,12 +620,12 @@ function RuleStudio({ rules, refresh }: { rules: RuleConfigV2[]; refresh: () => 
         </div>
       </div>
       {error ? <div className="rule-studio-error" role="alert">{error}</div> : null}
-      {creating && <RuleEditor initial={emptyRule()} onSave={(f) => void handleSaveNew(f)} onCancel={() => setCreating(false)} saving={saving} />}
+      {creating && <RuleEditor initial={emptyRule()} onSave={(f) => void handleSaveNew(f)} onCancel={() => setCreating(false)} saving={saving} timezone={timezone} />}
       <div className="rs-list">
         {rules.map((rule) => (
           <div key={rule.id}>
             <RuleStudioRow rule={rule} onEdit={() => { setEditingId(rule.id); setCreating(false); }} onToggle={(e) => void handleToggle(rule.id, e)} onDelete={() => void handleDelete(rule.id)} />
-            {editingId === rule.id && <RuleEditor initial={rule} onSave={(f) => void handleSaveEdit(rule.id, f)} onCancel={() => setEditingId(null)} saving={saving} />}
+            {editingId === rule.id && <RuleEditor initial={rule} onSave={(f) => void handleSaveEdit(rule.id, f)} onCancel={() => setEditingId(null)} saving={saving} timezone={timezone} />}
           </div>
         ))}
         {rules.length === 0 && <div className="empty-panel"><strong>No rules yet</strong><span>Create a new rule or install the r/csMajors starter pack.</span></div>}
@@ -452,7 +659,7 @@ function Dashboard({ cases, stats, settings, rules, refresh }: { cases: CaseReco
           </div>
         </>
       )}
-      {tab === 'rule-studio' && <RuleStudio rules={rules} refresh={refresh} />}
+      {tab === 'rule-studio' && <RuleStudio rules={rules} refresh={refresh} timezone={settings.timezone} />}
     </main>
   );
 }

@@ -103,13 +103,12 @@ Think like we're basically giving them conditions (datetime = sunday [from datet
   - [x] day of week;
   - [x] time window using subreddit timezone;
   - [x] custom semantic category such as spam, low quality, rude, meme, survey, hiring, referral, AI/LLM policy, or custom topic.
-- ... [ ] Add a rule simulator:
-  - [ ] paste a sample post;
-  - [ ] run deterministic checks;
-  - [ ] run optional LLM classification;
-  - [ ] show which condition fired;
-  - [ ] show the final action and confidence;
-  - [ ] allow saving the sample as a test case.
+- !!! [x] Add a hackathon-demo rule simulator:
+  - [x] paste a sample post title/body/flair/url;
+  - [x] choose post type and sample datetime;
+  - [x] run deterministic checks for the current draft rule;
+  - [x] show which conditions matched or missed;
+  - [x] clearly label semantic conditions as requiring LLM classification.
 - ... [ ] Add import/export JSON for sharing rule packs across subreddits.
 
 ## P1: Better LLM Classification
@@ -153,10 +152,13 @@ Think like we're basically giving them conditions (datetime = sunday [from datet
   - [ ] "Please use the weekly questions thread";
   - [ ] "Please use r/college for general college questions";
   - [ ] custom subreddit or wiki URL.
+- !!! [ ] One of the rerouting options should be to move posts to a megathread, if the subreddit has a megathread posted for that particular topic.
+but with the rule fixed.
 - !!! [ ] Add a "Copy redirect" or "Create mod-reviewed redirect draft" action.
-- !!! [ ] Add a "Create crosspost draft" button: when a post is rerouted, send the user a message with a pre-filled draft link so they can easily repost to the suggested subreddit instead of just being told "post elsewhere" (like how it says please post to r/X instead and a create draft button can be messaged to the user in that case).
+- !!! [ ] Add a "Create draft to r/X" button: when a post is rerouted, send the user a message with a pre-filled draft link so they can easily repost to the suggested subreddit instead of just being told "post elsewhere" (like how it says please post to r/X instead and a create draft button can be messaged to the user in that case).
 - !!! [ ] Avoid automated unsolicited DMs. Prefer moderator-confirmed comments, removal reasons, or dashboard copy.
 - !!! [ ] Keep account actions out of the MVP. For spammer rules, show "escalate to mod" or "suggest temporary ban (X hours/days)" only after explicit moderator confirmation and only if Devvit API support and policy review are clear.
+- ... [ ] If the rule the author violated is fixable, allow the mod to create a new post for the user with the same content as the original but with the rule fixed (maybe the edited post can just be sent back to the user as a draft for them ready to be posted, they can choose to edit it further if needed). For example, if a user posts a meme on a weekday, the mod can send the user a DM with the meme as a draft with instructions to post on a weekend post instead (or it could be a draft and instead of instructions, we have it scheduled for the weekend automatically, but again the user might not understand why it's scheduled for the weekend so maybe an instruction note would be needed in the dm).
 
 
 ## P1: AI-Assisted Rule Builder

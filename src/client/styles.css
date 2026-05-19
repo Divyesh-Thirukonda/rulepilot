@@ -812,6 +812,7 @@ main {
 
 .editor-field input[type="text"],
 .editor-field input[type="number"],
+.editor-field input[type="datetime-local"],
 .editor-field textarea,
 .editor-field select {
   background: var(--rp-neutral-background);
@@ -910,6 +911,129 @@ main {
   min-height: 32px;
 }
 
+/* ── Rule Simulator ──────────────────────────────────────────────────── */
+
+.rule-simulator {
+  background: var(--rp-neutral-background);
+  border: 1px solid var(--rp-neutral-border-weak);
+  border-radius: 6px;
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+}
+
+.simulator-header {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.simulator-header h3 {
+  font-size: 14px;
+  margin: 0;
+}
+
+.simulator-subtitle {
+  color: var(--rp-neutral-content-weak);
+  display: block;
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.simulator-outcome {
+  border-radius: 999px;
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 10px;
+}
+
+.simulator-match {
+  background: var(--rp-status-success-bg);
+  color: var(--rp-success-plain);
+}
+
+.simulator-miss {
+  background: var(--rp-secondary-background);
+  color: var(--rp-neutral-content);
+}
+
+.simulator-llm {
+  background: var(--rp-status-caution-bg);
+  color: var(--rp-caution-plain);
+}
+
+.simulator-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 2fr 1fr 1fr 1fr;
+}
+
+.simulator-results {
+  display: grid;
+  gap: 6px;
+}
+
+.simulator-result,
+.simulator-empty {
+  border: 1px solid var(--rp-neutral-border-weak);
+  border-radius: 6px;
+  color: var(--rp-neutral-content);
+  display: grid;
+  gap: 2px;
+  grid-template-columns: auto 1fr;
+  padding: 8px 10px;
+}
+
+.simulator-result strong {
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.simulator-result span {
+  color: var(--rp-neutral-content-strong);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.simulator-result p {
+  color: var(--rp-neutral-content-weak);
+  font-size: 12px;
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.simulator-result-match {
+  background: var(--rp-status-success-bg);
+}
+
+.simulator-result-match strong {
+  color: var(--rp-success-plain);
+}
+
+.simulator-result-miss {
+  background: var(--rp-neutral-background-container);
+}
+
+.simulator-result-miss strong {
+  color: var(--rp-neutral-content-weak);
+}
+
+.simulator-result-llm {
+  background: var(--rp-status-caution-bg);
+}
+
+.simulator-result-llm strong {
+  color: var(--rp-caution-plain);
+}
+
+.simulator-empty {
+  color: var(--rp-neutral-content-weak);
+  display: block;
+  font-size: 13px;
+}
+
 /* ── Days Picker ─────────────────────────────────────────────────────── */
 
 .days-picker {
@@ -1003,6 +1127,10 @@ main {
   .editor-grid {
     grid-template-columns: repeat(2, 1fr);
   }
+
+  .simulator-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
 @media (max-width: 860px) {
@@ -1022,6 +1150,15 @@ main {
 
   .condition-row {
     flex-wrap: wrap;
+  }
+
+  .simulator-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .simulator-grid {
+    grid-template-columns: 1fr;
   }
 }
 
