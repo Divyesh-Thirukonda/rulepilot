@@ -8,7 +8,7 @@ Pending developer.reddit.com app listing after `devvit upload` and review.
 
 RulePilot is a Devvit moderation app that helps moderators enforce nuanced natural-language rules that are hard to encode in AutoModerator regex. It scans new posts, runs deterministic checks for obvious rule matches, optionally calls OpenAI structured outputs for ambiguous cases, and stores an audit record with the matched rule, confidence, rationale, action, and moderator feedback.
 
-The app ships with an r/csMajors preset covering out-of-scope posts, memes, surveys/hiring/referrals, resume sticky routing, live OA question discussion, spam, low-quality posts, common questions, AI/LLM policy, college comparisons, laptop posts, restricted topics, and personal projects. It also includes a generic education-community starter pack for r/EngineeringStudents-style communities.
+The app ships with a focused r/csMajors preset covering out-of-scope posts, respectful engagement, weekday memes and shitposts, live OA/interview question discussion, and lazy or low-quality posts.
 
 Moderators can configure scan mode, enabled rules, confidence threshold, timezone, LLM usage, and model. They can manually scan a post, mark a RulePilot result correct, mark false positives, and create a dashboard post with recent cases and aggregate stats. Rule Studio lets mods create, edit, disable, import, export, simulate, and AI-draft rules from natural language, one-click templates, or existing subreddit rules. For fixable violations, RulePilot can show repair guidance and open a mod-facing fixed-post draft link without sending automated DMs or storing full post bodies.
 
@@ -18,9 +18,9 @@ RulePilot is designed to complement Reddit's existing moderation and safety syst
 
 Potential communities:
 
-- r/csMajors: reduces repeated manual handling of resume reviews, laptop posts, college comparisons, live OA questions, restricted-topic posts, and weekday memes.
+- r/csMajors: reduces repeated manual handling of out-of-scope posts, live OA questions, weekday memes, rude posts, and low-effort questions.
 - r/cscareerquestions: can adapt the same natural-language triage pattern for repetitive career questions, resume routing, referral/hiring posts, and low-effort job-market posts.
-- r/EngineeringStudents: can start from the education-community pack for homework boundaries, survey approvals, memes, school comparisons, resume/career threads, buying advice, low-effort questions, and self-promotion.
+- r/EngineeringStudents: can adapt Rule Studio and the AI Builder for homework boundaries, survey approvals, memes, school comparisons, resume/career threads, buying advice, low-effort questions, and self-promotion.
 
 Impact:
 

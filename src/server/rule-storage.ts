@@ -1,10 +1,11 @@
 import { redis } from '@devvit/web/server';
 
-import { CS_MAJORS_PRESET, EDUCATION_SUBREDDIT_PRESET } from '../shared/rules';
+import { CS_MAJORS_PRESET } from '../shared/rules';
 import type { RuleConfigV2 } from '../shared/types';
 
 const RULES_KEY_PREFIX = 'rulepilot:rules:';
 const MAX_RULES = 50;
+const ACTIVE_PRESET_RULE_IDS = new Set(CS_MAJORS_PRESET.map((rule) => rule.id));
 
 function rulesKey(subredditName: string): string {
   return `${RULES_KEY_PREFIX}${subredditName.toLowerCase()}`;
@@ -22,12 +23,23 @@ function parseRules(value: string | null | undefined): RuleConfigV2[] | undefine
   }
 }
 
+function pruneDeprecatedPresetRules(rules: RuleConfigV2[]): RuleConfigV2[] {
+  return rules.filter((rule) => rule.source !== 'preset' || ACTIVE_PRESET_RULE_IDS.has(rule.id));
+}
+
 /** Get all rules for a subreddit, seeding from preset if none exist. */
 export async function getSubredditRules(subredditName: string): Promise<RuleConfigV2[]> {
   const raw = await redis.get(rulesKey(subredditName));
   const existing = parseRules(raw);
   if (existing && existing.length > 0) {
-    return existing;
+    const pruned = pruneDeprecatedPresetRules(existing);
+    if (pruned.length !== existing.length) {
+      await saveSubredditRules(subredditName, pruned);
+    }
+    if (pruned.length === 0) {
+      return seedPresetIfEmpty(subredditName);
+    }
+    return pruned;
   }
   return seedPresetIfEmpty(subredditName);
 }
@@ -113,10 +125,6 @@ export async function importRules(subredditName: string, incoming: RuleConfigV2[
   return rules;
 }
 
-/** Add the generic education subreddit starter pack without overwriting existing rules. */
-export async function addEducationPreset(subredditName: string): Promise<RuleConfigV2[]> {
-  return importRules(subredditName, EDUCATION_SUBREDDIT_PRESET);
-}
 
 /** Export all rules for a subreddit. */
 export async function exportRules(subredditName: string): Promise<RuleConfigV2[]> {

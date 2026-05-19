@@ -214,7 +214,7 @@ Think like we're basically giving them conditions (datetime = sunday [from datet
   - [ ] spoiler/title formatting;
   - [ ] link-domain allowlist or blocklist;
   - [ ] custom restricted topic.
-- ... [x] Add a generic "education subreddit" pack for r/EngineeringStudents-style communities.
+- ... [x] Remove the generic education subreddit pack from the hackathon demo scope.
 - ... [ ] Add a generic "career subreddit" pack for r/cscareerquestions-style communities.
 - ... [ ] Add rule pack metadata:
   - [ ] source community;

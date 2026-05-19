@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { createRoot } from 'react-dom/client';
 
@@ -500,8 +500,7 @@ function CasesWorkspace({ cases, rules, refresh }: { cases: CaseRecord[]; rules:
   );
 }
 
-function SettingsPopover({ settings, open }: { settings: RulePilotSettings; open: boolean }) {
-  if (!open) return null;
+function SettingsPopover({ settings }: { settings: RulePilotSettings }) {
   return (
     <section className="settings-popover" aria-label="Current RulePilot settings">
       <div><span>Mode</span><strong>{settings.scanMode}</strong></div>
@@ -540,7 +539,7 @@ function ConditionRow({ condition, onChange, onRemove }: { condition: RuleCondit
         <input type="text" placeholder={condition.type === 'semantic' ? 'Category label (e.g. spam, rude)' : 'Value (pipe-separated)'} value={condition.value} onChange={(e) => onChange({ ...condition, value: e.target.value })} />
       )}
       <label className="negate-toggle"><input type="checkbox" checked={condition.negate ?? false} onChange={(e) => onChange({ ...condition, negate: e.target.checked })} />NOT</label>
-      <button className="icon-button" type="button" onClick={onRemove} title="Remove condition">✕</button>
+      <button className="condition-remove-button" type="button" onClick={onRemove} title="Remove condition">✕</button>
     </div>
   );
 }
@@ -878,11 +877,13 @@ function RuleStudioRow({ rule, onEdit, onToggle, onDelete }: { rule: RuleConfigV
 }
 
 function RuleStudio({ rules, refresh, timezone, createRequest }: { rules: RuleConfigV2[]; refresh: () => Promise<void>; timezone: string; createRequest: number }) {
+  const [localRules, setLocalRules] = useState<RuleConfigV2[]>(rules);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [drafts, setDrafts] = useState<RuleConfigV2[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [needsRefresh, setNeedsRefresh] = useState(false);
 
   useEffect(() => {
     if (createRequest === 0) return;
@@ -890,12 +891,36 @@ function RuleStudio({ rules, refresh, timezone, createRequest }: { rules: RuleCo
     setEditingId(null);
   }, [createRequest]);
 
+  useEffect(() => {
+    setLocalRules(rules);
+    setNeedsRefresh(false);
+  }, [rules]);
+
+  const applyRuleMutation = async (response: Response, message: string) => {
+    await requireOk(response, message);
+    const body = await response.json() as { rules?: RuleConfigV2[] };
+    if (!body.rules) {
+      throw new Error(message);
+    }
+    setLocalRules(body.rules);
+    setNeedsRefresh(true);
+  };
+
+  const refreshFromServer = async () => {
+    setError(null);
+    try {
+      await refresh();
+      setNeedsRefresh(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
   const handleToggle = async (ruleId: string, enabled: boolean) => {
     setError(null);
     try {
       const response = await fetch(`/api/rules/v2/${ruleId}/toggle`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled }) });
-      await requireOk(response, 'Could not update rule state');
-      await refresh();
+      await applyRuleMutation(response, 'Could not update rule state');
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -905,8 +930,7 @@ function RuleStudio({ rules, refresh, timezone, createRequest }: { rules: RuleCo
     setError(null);
     try {
       const response = await fetch(`/api/rules/v2/${ruleId}`, { method: 'DELETE' });
-      await requireOk(response, 'Could not delete rule');
-      await refresh();
+      await applyRuleMutation(response, 'Could not delete rule');
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -916,9 +940,8 @@ function RuleStudio({ rules, refresh, timezone, createRequest }: { rules: RuleCo
     setSaving(true);
     try {
       const response = await fetch('/api/rules/v2', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) });
-      await requireOk(response, 'Could not create rule');
+      await applyRuleMutation(response, 'Could not create rule');
       setCreating(false);
-      await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally { setSaving(false); }
@@ -932,9 +955,8 @@ function RuleStudio({ rules, refresh, timezone, createRequest }: { rules: RuleCo
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...form, enabled: false }),
       });
-      await requireOk(response, 'Could not save draft rule');
+      await applyRuleMutation(response, 'Could not save draft rule');
       setDrafts((items) => items.filter((item) => item.id !== draftId));
-      await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally { setSaving(false); }
@@ -944,9 +966,8 @@ function RuleStudio({ rules, refresh, timezone, createRequest }: { rules: RuleCo
     setSaving(true);
     try {
       const response = await fetch(`/api/rules/v2/${ruleId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) });
-      await requireOk(response, 'Could not save rule');
+      await applyRuleMutation(response, 'Could not save rule');
       setEditingId(null);
-      await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally { setSaving(false); }
@@ -975,31 +996,21 @@ function RuleStudio({ rules, refresh, timezone, createRequest }: { rules: RuleCo
           throw new Error('Import file must contain a JSON array of rules.');
         }
         const response = await fetch('/api/rules/v2/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rules: imported }) });
-        await requireOk(response, 'Could not import rules');
-        await refresh();
+        await applyRuleMutation(response, 'Could not import rules');
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
       }
     };
     input.click();
   };
-  const handleAddEducationPack = async () => {
-    setError(null);
-    try {
-      const response = await fetch('/api/rules/v2/add-education-pack', { method: 'POST' });
-      await requireOk(response, 'Could not add education starter pack');
-      await refresh();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  };
 
   return (
     <section className="rule-studio">
       <div className="rs-header">
-        <div><h2>Rule Studio</h2><span>{rules.length} rules</span></div>
+        <div><h2>Rule Studio</h2><span>{localRules.length} rules</span></div>
       </div>
       {error ? <div className="rule-studio-error" role="alert">{error}</div> : null}
+      {needsRefresh ? <div className="rule-studio-sync"><span>Rule changes saved.</span><button className="secondary-button" type="button" onClick={() => void refreshFromServer()}>Refresh to load latest dashboard data</button></div> : null}
       <RuleBuilder
         onDraft={(rule) => {
           setCreating(false);
@@ -1029,18 +1040,17 @@ function RuleStudio({ rules, refresh, timezone, createRequest }: { rules: RuleCo
             />
           </div>
         ))}
-        {rules.map((rule) => (
+        {localRules.map((rule) => (
           <div key={rule.id}>
             <RuleStudioRow rule={rule} onEdit={() => { setEditingId(rule.id); setCreating(false); }} onToggle={(e) => void handleToggle(rule.id, e)} onDelete={() => void handleDelete(rule.id)} />
             {editingId === rule.id && <RuleEditor initial={rule} onSave={(f) => void handleSaveEdit(rule.id, f)} onCancel={() => setEditingId(null)} saving={saving} timezone={timezone} />}
           </div>
         ))}
-        {rules.length === 0 && <div className="empty-panel"><strong>No rules yet</strong><span>Create a new rule or install the r/csMajors starter pack.</span></div>}
+        {localRules.length === 0 && <div className="empty-panel"><strong>No rules yet</strong><span>Create a new rule or import an existing RulePilot rule file.</span></div>}
       </div>
       <div className="rs-footer-actions">
         <button className="secondary-button" onClick={handleImport}>Import</button>
         <button className="secondary-button" onClick={() => void handleExport()}>Export</button>
-        <button className="secondary-button" onClick={() => void handleAddEducationPack()}>Add Education Pack</button>
       </div>
     </section>
   );
@@ -1050,40 +1060,8 @@ function RuleStudio({ rules, refresh, timezone, createRequest }: { rules: RuleCo
 
 function Dashboard({ cases, stats, settings, rules, refresh }: { cases: CaseRecord[]; stats: DashboardStats; settings: RulePilotSettings; rules: RuleConfigV2[]; refresh: () => Promise<void> }) {
   const [tab, setTab] = useState<DashboardTab>('cases');
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [createRuleRequest, setCreateRuleRequest] = useState(0);
-  const shellRef = useRef<HTMLElement | null>(null);
   const newest = useMemo(() => cases.slice(0, 25), [cases]);
-
-  useEffect(() => {
-    const handleFullscreenChange = () => {
-      setIsFullscreen(Boolean(document.fullscreenElement));
-    };
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
-    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
-  }, []);
-
-  const toggleFullscreen = async () => {
-    const shell = shellRef.current;
-    if (!shell) return;
-
-    if (document.fullscreenElement) {
-      await document.exitFullscreen();
-      return;
-    }
-
-    if (isFullscreen) {
-      setIsFullscreen(false);
-      return;
-    }
-
-    try {
-      await shell.requestFullscreen();
-    } catch {
-      setIsFullscreen((value) => !value);
-    }
-  };
 
   const startNewRule = () => {
     setTab('rule-studio');
@@ -1091,7 +1069,7 @@ function Dashboard({ cases, stats, settings, rules, refresh }: { cases: CaseReco
   };
 
   return (
-    <main ref={shellRef} className={isFullscreen ? 'app-shell fullscreen-shell' : 'app-shell'}>
+    <main className="app-shell">
       <header className="topbar">
         <div><h1>RulePilot</h1></div>
         <nav className="tab-bar">
@@ -1099,41 +1077,39 @@ function Dashboard({ cases, stats, settings, rules, refresh }: { cases: CaseReco
           <button className={`tab-item ${tab === 'rule-studio' ? 'active' : ''}`} onClick={() => setTab('rule-studio')}>Rule Studio</button>
         </nav>
         <div className="topbar-actions">
-          <button className="secondary-button" onClick={() => void toggleFullscreen()}>{isFullscreen ? 'Exit full screen' : 'Full screen'}</button>
-          <button aria-label="Refresh dashboard" className="secondary-button icon-button" onClick={() => void refresh()} type="button">
-            <svg aria-hidden="true" viewBox="0 0 24 24">
-              <path d="M20 6v5h-5" />
-              <path d="M4 18v-5h5" />
-              <path d="M18 11a6 6 0 0 0-10-4.5L4 10" />
-              <path d="M6 13a6 6 0 0 0 10 4.5l4-3.5" />
-            </svg>
-          </button>
-          <button
-            aria-expanded={settingsOpen}
-            aria-label="Open settings summary"
-            className="secondary-button icon-button"
-            onClick={() => setSettingsOpen((value) => !value)}
-            type="button"
-          >
-            <svg aria-hidden="true" viewBox="0 0 24 24">
-              <circle cx="12" cy="12" r="3" />
-              <path d="M19.4 15a8 8 0 0 0 .1-1.2l2-1.5-2-3.4-2.4 1a7.8 7.8 0 0 0-2-1.1L14.8 6h-4l-.4 2.8a7.8 7.8 0 0 0-2 1.1l-2.4-1-2 3.4 2 1.5a8 8 0 0 0 0 2.4l-2 1.5 2 3.4 2.4-1a7.8 7.8 0 0 0 2 1.1l.4 2.8h4l.4-2.8a7.8 7.8 0 0 0 2-1.1l2.4 1 2-3.4-2-1.5a8 8 0 0 0-.2-1.2Z" />
-            </svg>
-          </button>
+          <div className="settings-menu">
+            <button
+              aria-label="Show settings summary"
+              className="secondary-button icon-button settings-button"
+              type="button"
+            >
+              <svg aria-hidden="true" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="3.2" />
+                <path d="M12 2.8v2.4" />
+                <path d="M12 18.8v2.4" />
+                <path d="m4.2 6.1 1.7 1.7" />
+                <path d="m18.1 16.2 1.7 1.7" />
+                <path d="M2.8 12h2.4" />
+                <path d="M18.8 12h2.4" />
+                <path d="m4.2 17.9 1.7-1.7" />
+                <path d="m18.1 7.8 1.7-1.7" />
+              </svg>
+            </button>
+            <SettingsPopover settings={settings} />
+          </div>
           <button aria-label="Create new rule" className="primary-button icon-button create-rule-button" onClick={startNewRule} type="button">
             <svg aria-hidden="true" viewBox="0 0 24 24">
               <path d="M12 5v14" />
               <path d="M5 12h14" />
             </svg>
           </button>
-          <SettingsPopover settings={settings} open={settingsOpen} />
         </div>
       </header>
       {tab === 'cases' && (
         <>
-          <StatBand stats={stats} />
           <div className="dashboard-grid">
             <CasesWorkspace cases={newest} rules={rules} refresh={refresh} />
+            <StatBand stats={stats} />
           </div>
         </>
       )}

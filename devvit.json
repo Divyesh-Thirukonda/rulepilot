@@ -105,70 +105,20 @@
             "value": "shitposts-and-memes"
           },
           {
-            "label": "AMAs, surveys, hiring and referrals",
-            "value": "amas-surveys-hiring-referrals"
-          },
-          {
-            "label": "Resume sticky",
-            "value": "resume-sticky"
-          },
-          {
-            "label": "Amazon currently optional",
-            "value": "amazon-optional"
-          },
-          {
             "label": "Live OA questions",
             "value": "live-oa-questions"
           },
           {
-            "label": "Spam",
-            "value": "spam"
-          },
-          {
             "label": "Lazy or low-quality posts",
             "value": "low-quality"
-          },
-          {
-            "label": "Common questions",
-            "value": "common-questions"
-          },
-          {
-            "label": "AI Large Language Models",
-            "value": "ai-llms"
-          },
-          {
-            "label": "College comparison posts",
-            "value": "college-comparison"
-          },
-          {
-            "label": "Laptop posts",
-            "value": "laptop-posts"
-          },
-          {
-            "label": "Restricted posts",
-            "value": "restricted-posts"
-          },
-          {
-            "label": "Personal projects",
-            "value": "personal-projects"
           }
         ],
         "defaultValue": [
           "out-of-scope",
           "respectful-engagement",
           "shitposts-and-memes",
-          "amas-surveys-hiring-referrals",
-          "resume-sticky",
-          "amazon-optional",
           "live-oa-questions",
-          "spam",
-          "low-quality",
-          "common-questions",
-          "ai-llms",
-          "college-comparison",
-          "laptop-posts",
-          "restricted-posts",
-          "personal-projects"
+          "low-quality"
         ]
       }
     }

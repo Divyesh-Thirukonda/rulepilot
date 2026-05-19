@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { CS_MAJORS_PRESET } from '../shared/rules';
-import type { ClassificationResult } from '../shared/types';
+import type { ClassificationResult, RuleConfigV2 } from '../shared/types';
 import { calibrateLlmResult } from './classifier';
 
 function llmResult(input: Partial<ClassificationResult>): ClassificationResult {
@@ -40,6 +40,21 @@ describe('calibrateLlmResult', () => {
   });
 
   it('rejects AI policy matches based only on authorship detection', () => {
+    const aiPolicyRule: RuleConfigV2 = {
+      id: 'ai-llms',
+      title: 'AI Large Language Models',
+      description: 'AI policy topic rule.',
+      examples: [],
+      negativeExamples: [],
+      action: 'flag',
+      threshold: 0.78,
+      category: 'quality',
+      enabled: true,
+      conditions: [],
+      createdAt: '2026-05-18T00:00:00.000Z',
+      updatedAt: '2026-05-18T00:00:00.000Z',
+      source: 'custom',
+    };
     const result = calibrateLlmResult(
       llmResult({
         ruleId: 'ai-llms',
@@ -47,7 +62,7 @@ describe('calibrateLlmResult', () => {
         rationale: 'This looks AI-generated.',
         matchedSignals: ['authorship guess'],
       }),
-      CS_MAJORS_PRESET
+      [aiPolicyRule]
     );
 
     expect(result.decision).toBe('insufficient_context');

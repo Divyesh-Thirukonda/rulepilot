@@ -2,7 +2,7 @@
 
 RulePilot is a Devvit moderation app for communities whose rules are too nuanced for simple regex. It scans new posts, explains likely rule matches, and routes high-confidence cases to moderator review instead of taking irreversible action.
 
-The app ships with an r/csMajors preset covering scope, memes, surveys/hiring/referrals, resumes, live OA questions, low-quality posts, common questions, AI/LLM content policy, college comparisons, laptop posts, restricted topics, and personal projects. It also includes a generic education-community starter pack for r/EngineeringStudents-style communities.
+The app ships with a focused r/csMajors preset covering out-of-scope posts, respectful engagement, weekday memes and shitposts, live OA/interview question discussion, and lazy or low-quality posts.
 
 ## What It Does
 

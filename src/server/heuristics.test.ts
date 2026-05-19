@@ -20,6 +20,16 @@ function post(input: Partial<PostInput> & Pick<PostInput, 'title'>): PostInput {
 }
 
 describe('deterministicClassifyPost', () => {
+  it('keeps the default r/csMajors preset focused for the demo', () => {
+    expect(CS_MAJORS_PRESET.map((rule) => rule.id)).toEqual([
+      'out-of-scope',
+      'respectful-engagement',
+      'shitposts-and-memes',
+      'live-oa-questions',
+      'low-quality',
+    ]);
+  });
+
   it('routes career-only posts to out-of-scope guidance', () => {
     const result = deterministicClassifyPost(
       post({
@@ -32,19 +42,6 @@ describe('deterministicClassifyPost', () => {
 
     expect(result?.ruleId).toBe('out-of-scope');
     expect(result?.suggestedAction).toBe('filter_to_modqueue');
-  });
-
-  it('routes resume posts to the resume sticky', () => {
-    const result = deterministicClassifyPost(
-      post({
-        title: 'Please roast my SWE resume',
-        body: 'I need resume feedback for internship applications.',
-      }),
-      CS_MAJORS_PRESET,
-      monday
-    );
-
-    expect(result?.ruleId).toBe('resume-sticky');
   });
 
   it('flags live OA question discussion but allows practice OA prep', () => {
@@ -78,15 +75,14 @@ describe('deterministicClassifyPost', () => {
     expect(weekend?.suggestedAction).toBe('allow');
   });
 
-  it.each([
-    ['laptop-posts', 'Which laptop should I buy for CS?', 'MacBook or ThinkPad for programming?'],
-    ['college-comparison', 'UIUC CS vs Georgia Tech CS?', 'Help me choose between these universities.'],
-    ['personal-projects', 'I built a new internship tracker app', 'Check out my project and GitHub repo.'],
-    ['amas-surveys-hiring-referrals', 'Please fill out my CS student survey', 'This is for a research study.'],
-    ['amas-surveys-hiring-referrals', 'Can anyone refer me to Google?', 'Looking for a referral.'],
-  ])('matches %s for "%s"', (ruleId, title, body) => {
-    const result = deterministicClassifyPost(post({ title, body }), CS_MAJORS_PRESET, monday);
-    expect(result?.ruleId).toBe(ruleId);
+  it('matches lazy or low-quality posts', () => {
+    const result = deterministicClassifyPost(
+      post({ title: 'Need advice', body: 'help' }),
+      CS_MAJORS_PRESET,
+      monday
+    );
+
+    expect(result?.ruleId).toBe('low-quality');
   });
 
   it('matches literal keyword phrases with symbols instead of treating them like regex words', () => {

@@ -75,6 +75,7 @@
 body {
   margin: 0;
   min-width: 320px;
+  overflow-x: hidden;
 }
 
 button,
@@ -92,26 +93,11 @@ a:hover {
 }
 
 .app-shell {
+  max-width: 100%;
+  overflow-x: hidden;
   width: min(1360px, 100%);
   margin: 0 auto;
   padding: 18px;
-}
-
-.app-shell:fullscreen {
-  background: var(--rp-neutral-background-weak);
-  overflow: auto;
-  width: 100%;
-}
-
-.fullscreen-shell {
-  background: var(--rp-neutral-background-weak);
-  inset: 0;
-  margin: 0;
-  max-width: none;
-  overflow: auto;
-  position: fixed;
-  width: 100%;
-  z-index: 1000;
 }
 
 .center-state {
@@ -215,9 +201,34 @@ a:hover {
   width: 18px;
 }
 
+.settings-menu {
+  position: relative;
+}
+
+.settings-menu::after {
+  content: "";
+  display: block;
+  height: 8px;
+  left: 0;
+  position: absolute;
+  right: 0;
+  top: 100%;
+}
+
+.settings-button:hover,
+.settings-button:focus-visible {
+  background: var(--rp-secondary-background-hovered);
+  color: var(--rp-neutral-content-strong);
+}
+
 .create-rule-button {
+  background: var(--rp-brand-background) !important;
   border-color: transparent;
-  color: var(--rp-brand-on-background);
+  color: var(--rp-brand-on-background) !important;
+}
+
+.create-rule-button:hover {
+  background: var(--rp-brand-background-hovered) !important;
 }
 
 .settings-popover {
@@ -225,13 +236,18 @@ a:hover {
   border: 1px solid var(--rp-neutral-border);
   border-radius: 6px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
-  display: grid;
+  display: none;
   gap: 0;
   min-width: 240px;
   position: absolute;
   right: 0;
   top: calc(100% + 8px);
   z-index: 10;
+}
+
+.settings-menu:hover .settings-popover,
+.settings-menu:focus-within .settings-popover {
+  display: grid;
 }
 
 .settings-popover div {
@@ -260,7 +276,10 @@ a:hover {
 }
 
 .stat-band {
+  display: grid;
+  gap: 8px;
   grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: 12px;
 }
 
 .stat-band div {
@@ -288,6 +307,7 @@ a:hover {
   grid-template-columns: 1fr;
   gap: 12px;
   align-items: start;
+  min-width: 0;
 }
 
 .workspace-grid {
@@ -295,6 +315,7 @@ a:hover {
   grid-template-columns: minmax(0, 1fr) 340px;
   gap: 12px;
   min-width: 0;
+  max-width: 100%;
 }
 
 .cases-panel,
@@ -303,6 +324,7 @@ a:hover {
   background: var(--rp-neutral-background);
   border: 1px solid var(--rp-neutral-border-weak);
   border-radius: 6px;
+  min-width: 0;
 }
 
 .panel-heading {
@@ -460,8 +482,8 @@ a:hover {
 .detail-panel {
   align-self: start;
   display: grid;
-  gap: 14px;
-  padding: 14px;
+  gap: 10px;
+  padding: 12px;
   position: sticky;
   top: 12px;
 }
@@ -469,6 +491,10 @@ a:hover {
 .detail-panel h2 {
   line-height: 1.3;
   overflow-wrap: anywhere;
+}
+
+.detail-panel > * {
+  min-width: 0;
 }
 
 .detail-header,
@@ -506,6 +532,8 @@ a:hover {
   font-size: 13px;
   line-height: 1.45;
   margin: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .detail-section ul {
@@ -526,6 +554,7 @@ a:hover {
   display: flex;
   gap: 10px;
   justify-content: space-between;
+  min-width: 0;
 }
 
 .routing-heading h3 {
@@ -556,6 +585,13 @@ a:hover {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  min-width: 0;
+}
+
+.routing-actions .secondary-button {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .post-link {
@@ -743,6 +779,7 @@ a:hover {
 .rs-footer-actions {
   border-top: 1px solid var(--rp-neutral-border-weak);
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   justify-content: flex-end;
   padding: 12px 14px;
@@ -762,6 +799,24 @@ a:hover {
   font-weight: 600;
   line-height: 1.4;
   padding: 10px 12px;
+}
+
+.rule-studio-sync {
+  align-items: center;
+  background: var(--rp-status-primary-bg);
+  border: 1px solid color-mix(in srgb, var(--rp-primary-plain) 28%, var(--rp-neutral-border-weak));
+  border-radius: 6px;
+  color: var(--rp-primary-plain);
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  margin: 12px 14px 0;
+  padding: 10px 12px;
+}
+
+.rule-studio-sync span {
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .rule-builder {
@@ -867,9 +922,9 @@ a:hover {
 /* ── Rule Row ────────────────────────────────────────────────────────── */
 
 .rs-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
   padding: 12px 14px;
   border-bottom: 1px solid var(--rp-neutral-border-weak);
@@ -893,17 +948,18 @@ a:hover {
   align-items: center;
   gap: 12px;
   min-width: 0;
-  flex: 1;
 }
 
 .rs-row-info {
   align-items: center;
   display: flex;
+  flex: 1;
   gap: 8px;
   min-width: 0;
 }
 
 .rs-row-info strong {
+  min-width: 0;
   font-size: 14px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -913,7 +969,7 @@ a:hover {
 .rs-row-actions {
   display: flex;
   gap: 6px;
-  flex-shrink: 0;
+  min-width: max-content;
 }
 
 .danger-text {
@@ -1118,7 +1174,7 @@ a:hover {
   white-space: nowrap;
 }
 
-.icon-button {
+.condition-remove-button {
   background: transparent;
   border: 1px solid var(--rp-neutral-border-weak);
   border-radius: 4px;
@@ -1132,7 +1188,7 @@ a:hover {
   justify-content: center;
 }
 
-.icon-button:hover {
+.condition-remove-button:hover {
   background: var(--rp-status-danger-bg);
   color: var(--rp-danger-plain);
 }
@@ -1376,11 +1432,35 @@ a:hover {
 @media (max-width: 860px) {
   .app-shell,
   .center-state {
-    padding: 14px;
+    padding: 10px;
   }
 
-  .stat-band {
-    grid-template-columns: 1fr;
+  .case-table {
+    min-width: 0;
+  }
+
+  .case-table th:nth-child(1),
+  .case-table td:nth-child(1) {
+    width: 40%;
+  }
+
+  .case-table th:nth-child(2),
+  .case-table td:nth-child(2) {
+    width: 26%;
+  }
+
+  .case-table th:nth-child(3),
+  .case-table td:nth-child(3),
+  .case-table th:nth-child(4),
+  .case-table td:nth-child(4) {
+    width: 17%;
+  }
+
+  .case-table th:nth-child(5),
+  .case-table td:nth-child(5),
+  .case-table th:nth-child(6),
+  .case-table td:nth-child(6) {
+    display: none;
   }
 
   .editor-grid {
@@ -1409,7 +1489,8 @@ a:hover {
 
   .topbar-actions {
     display: grid;
-    grid-template-columns: 1fr repeat(3, 38px);
+    grid-template-columns: repeat(2, 38px);
+    justify-content: end;
   }
 
   .topbar h1 {
@@ -1417,11 +1498,21 @@ a:hover {
   }
 
   .case-table {
-    min-width: 700px;
+    min-width: 0;
+  }
+
+  .case-table th,
+  .case-table td {
+    padding-left: 6px;
+    padding-right: 6px;
+  }
+
+  .stat-band {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .rs-row {
-    flex-direction: column;
+    grid-template-columns: 1fr;
     align-items: stretch;
   }
 
@@ -1430,6 +1521,7 @@ a:hover {
   }
 
   .rule-builder-heading,
+  .rule-studio-sync,
   .draft-banner {
     align-items: stretch;
     flex-direction: column;

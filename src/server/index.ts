@@ -36,7 +36,6 @@ import { getOpenAiApiKey, getRulePilotSettings } from './settings';
 import { buildStats, deleteCase, getRecentCases, saveCase, updateCaseFeedback } from './storage';
 import { postInputFromPost, postInputFromPostV2, postInputFromTrigger } from './post-input';
 import {
-  addEducationPreset,
   deleteRule,
   exportRules,
   getSubredditRules,
@@ -726,17 +725,6 @@ app.post('/api/rules/v2/seed-preset', async (c) => {
   }
   const subredditName = context.subredditName ?? 'unknown';
   const rules = await seedPresetIfEmpty(subredditName);
-  return c.json({ rules });
-});
-
-/** Add the generic education subreddit starter pack. */
-app.post('/api/rules/v2/add-education-pack', async (c) => {
-  const allowed = await requireModerator(c);
-  if (allowed !== true) {
-    return allowed;
-  }
-  const subredditName = context.subredditName ?? 'unknown';
-  const rules = await addEducationPreset(subredditName);
   return c.json({ rules });
 });
 

@@ -16,12 +16,12 @@ const settings: RulePilotSettings = {
 function result(confidence: number): ClassificationResult {
   return {
     decision: 'violation',
-    ruleId: 'resume-sticky',
+    ruleId: 'low-quality',
     confidence,
-    rationale: 'Resume review.',
+    rationale: 'Low-quality post.',
     suggestedAction: 'filter_to_modqueue',
     source: 'deterministic',
-    matchedSignals: ['resume'],
+    matchedSignals: ['low quality'],
   };
 }
 
@@ -32,8 +32,8 @@ describe('policy', () => {
 
   it('requires both global and rule-specific thresholds before action', () => {
     const lowerGlobal: RulePilotSettings = { ...settings, confidenceThreshold: 0.6 };
-    expect(shouldAct(result(0.69), settings, enabledRules(settings))).toBe(false);
-    expect(shouldAct(result(0.71), lowerGlobal, enabledRules(lowerGlobal))).toBe(true);
+    expect(shouldAct(result(0.73), settings, enabledRules(settings))).toBe(false);
+    expect(shouldAct(result(0.75), lowerGlobal, enabledRules(lowerGlobal))).toBe(true);
     expect(shouldAct(result(0.77), settings, enabledRules(settings))).toBe(true);
   });
 
