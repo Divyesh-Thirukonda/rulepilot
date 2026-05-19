@@ -2,7 +2,9 @@
 
 ## Inspiration
 
-Moderators often deal with rules that are easy for humans to understand but hard to express with regex. In r/csMajors, for example, posts about resumes, career-only advice, laptop recommendations, college comparisons, surveys, hiring, referrals, live online assessments, and weekday memes all need different handling. Some should be reviewed, some should be routed to a megathread, and some should be sent to a more relevant community.
+I have an app on my phone called Routines, which allows you to create custom routines for your phone based on various triggers and actions. For example, when I get in my car (trigger), my phone will automatically turn on my mobile hotspot (action).
+
+This got me thinking, what if we could create a similar system for moderators on Reddit? Moderators often deal with rules that are easy for humans to understand but hard to express with regex. In r/csMajors, for example, posts about resumes, career-only advice, laptop recommendations, college comparisons, surveys, hiring, referrals, live online assessments, and weekday memes all need different handling. Some should be reviewed, some should be routed to a megathread, and some should be sent to a more relevant community.
 
 RulePilot started from that problem: give moderators a practical way to enforce nuanced community rules without asking them to hardcode every edge case.
 
