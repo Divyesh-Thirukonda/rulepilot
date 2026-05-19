@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { createRoot } from 'react-dom/client';
 
@@ -1065,16 +1065,51 @@ function RuleStudio({ rules, refresh, timezone }: { rules: RuleConfigV2[]; refre
 
 function Dashboard({ cases, stats, settings, rules, refresh }: { cases: CaseRecord[]; stats: DashboardStats; settings: RulePilotSettings; rules: RuleConfigV2[]; refresh: () => Promise<void> }) {
   const [tab, setTab] = useState<DashboardTab>('cases');
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const shellRef = useRef<HTMLElement | null>(null);
   const newest = useMemo(() => cases.slice(0, 25), [cases]);
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(Boolean(document.fullscreenElement));
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
+  const toggleFullscreen = async () => {
+    const shell = shellRef.current;
+    if (!shell) return;
+
+    if (document.fullscreenElement) {
+      await document.exitFullscreen();
+      return;
+    }
+
+    if (isFullscreen) {
+      setIsFullscreen(false);
+      return;
+    }
+
+    try {
+      await shell.requestFullscreen();
+    } catch {
+      setIsFullscreen((value) => !value);
+    }
+  };
+
   return (
-    <main>
+    <main ref={shellRef} className={isFullscreen ? 'app-shell fullscreen-shell' : 'app-shell'}>
       <header className="topbar">
         <div><h1>RulePilot</h1></div>
         <nav className="tab-bar">
           <button className={`tab-item ${tab === 'cases' ? 'active' : ''}`} onClick={() => setTab('cases')}>Cases</button>
           <button className={`tab-item ${tab === 'rule-studio' ? 'active' : ''}`} onClick={() => setTab('rule-studio')}>Rule Studio</button>
         </nav>
-        <button className="primary-button" onClick={() => void refresh()}>Refresh</button>
+        <div className="topbar-actions">
+          <button className="secondary-button" onClick={() => void toggleFullscreen()}>{isFullscreen ? 'Exit full screen' : 'Full screen'}</button>
+          <button className="primary-button" onClick={() => void refresh()}>Refresh</button>
+        </div>
       </header>
       {tab === 'cases' && (
         <>

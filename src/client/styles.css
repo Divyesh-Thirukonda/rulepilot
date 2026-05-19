@@ -91,7 +91,30 @@ a:hover {
   text-decoration: underline;
 }
 
-main {
+.app-shell {
+  width: min(1360px, 100%);
+  margin: 0 auto;
+  padding: 18px;
+}
+
+.app-shell:fullscreen {
+  background: var(--rp-neutral-background-weak);
+  overflow: auto;
+  width: 100%;
+}
+
+.fullscreen-shell {
+  background: var(--rp-neutral-background-weak);
+  inset: 0;
+  margin: 0;
+  max-width: none;
+  overflow: auto;
+  position: fixed;
+  width: 100%;
+  z-index: 1000;
+}
+
+.center-state {
   width: min(1360px, 100%);
   margin: 0 auto;
   padding: 18px;
@@ -115,6 +138,11 @@ main {
 .topbar p {
   margin: 4px 0 0;
   color: var(--rp-neutral-content-weak);
+}
+
+.topbar-actions {
+  display: flex;
+  gap: 8px;
 }
 
 .primary-button,
@@ -1345,7 +1373,8 @@ main {
 }
 
 @media (max-width: 860px) {
-  main {
+  .app-shell,
+  .center-state {
     padding: 14px;
   }
 
@@ -1377,6 +1406,11 @@ main {
   .topbar {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .topbar-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
   }
 
   .topbar h1 {
