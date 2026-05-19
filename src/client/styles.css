@@ -312,6 +312,15 @@ main {
   background: var(--rp-neutral-background-selected);
 }
 
+.case-table tr:focus {
+  outline: 0;
+}
+
+.case-table tr:focus-visible td {
+  background: var(--rp-neutral-background-selected);
+  box-shadow: inset 0 0 0 2px var(--rp-primary-plain);
+}
+
 .title-button {
   background: transparent;
   border: 0;

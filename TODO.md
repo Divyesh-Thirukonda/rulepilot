@@ -52,8 +52,11 @@ Last updated: 2026-05-18
   - [x] restrained colors with strong status semantics;
   - [x] improved typography, spacing, and empty states.
   - [x] align dashboard colors with Reddit Product Language semantic theme tokens.
-  - [ ] Follow-up: add keyboard row navigation for the case table.
-  - [ ] Follow-up: verify token rendering inside the live Reddit webview in both light and dark mode.
+  - [x] Follow-up: add keyboard row navigation for the case table.
+  - [ ] Follow-up: verify token rendering inside the live Reddit webview in both light and dark mode. (blocked: private playtest requires a logged-in approved moderator session)
+    - [ ] Open `https://www.reddit.com/r/rulepilot_dev/?playtest=rulepilot` while logged in as an approved moderator.
+    - [ ] Create/open the RulePilot dashboard custom post in light mode and confirm semantic tokens render correctly.
+    - [ ] Switch Reddit to dark mode, refresh the dashboard webview, and confirm semantic tokens render correctly.
 - ... [ ] Add dashboard filters:
   - [ ] all cases;
   - [ ] needs feedback;

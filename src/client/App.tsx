@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
-import type { CSSProperties } from 'react';
+import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import type {
@@ -105,12 +105,54 @@ function ruleTitle(rules: RuleConfigV2[], ruleId: string | null): string {
 }
 
 function CaseTable({ cases, rules, selectedId, onSelect }: { cases: CaseRecord[]; rules: RuleConfigV2[]; selectedId: string | null; onSelect: (id: string) => void }) {
+  const selectedIndex = Math.max(0, cases.findIndex((item) => item.id === selectedId));
+  const focusRow = (index: number) => {
+    const next = cases[index];
+    if (!next) return;
+    onSelect(next.id);
+    requestAnimationFrame(() => {
+      document.querySelector<HTMLTableRowElement>(`[data-case-row-index="${index}"]`)?.focus();
+    });
+  };
+  const handleRowKeyDown = (event: ReactKeyboardEvent<HTMLTableRowElement>, index: number) => {
+    switch (event.key) {
+      case 'ArrowDown':
+        event.preventDefault();
+        focusRow(Math.min(cases.length - 1, index + 1));
+        break;
+      case 'ArrowUp':
+        event.preventDefault();
+        focusRow(Math.max(0, index - 1));
+        break;
+      case 'Home':
+        event.preventDefault();
+        focusRow(0);
+        break;
+      case 'End':
+        event.preventDefault();
+        focusRow(cases.length - 1);
+        break;
+      case 'Enter':
+      case ' ':
+        event.preventDefault();
+        if (cases[index]) onSelect(cases[index].id);
+        break;
+    }
+  };
+
   return (
     <div className="case-table-wrap">
       <table className="case-table">
         <thead><tr><th scope="col">Post</th><th scope="col">Rule</th><th scope="col">Confidence</th><th scope="col">Action</th><th scope="col">Feedback</th><th scope="col">Updated</th></tr></thead>
-        <tbody>{cases.map((item) => (
-          <tr className={item.id === selectedId ? 'selected-row' : undefined} key={item.id}>
+        <tbody>{cases.map((item, index) => (
+          <tr
+            aria-selected={item.id === selectedId}
+            className={item.id === selectedId ? 'selected-row' : undefined}
+            data-case-row-index={index}
+            key={item.id}
+            onKeyDown={(event) => handleRowKeyDown(event, index)}
+            tabIndex={index === selectedIndex ? 0 : -1}
+          >
             <td className="post-cell"><button className="title-button" type="button" onClick={() => onSelect(item.id)}><span>{item.postTitle}</span><small>{item.result.source}</small></button></td>
             <td>{ruleTitle(rules, item.result.ruleId)}</td>
             <td><span className="confidence-meter" style={{ '--value': `${Math.round(item.result.confidence * 100)}%` } as CSSProperties}><span>{pct(item.result.confidence)}</span></span></td>
