@@ -1,0 +1,39 @@
+{
+  "private": true,
+  "name": "rulepilot",
+  "version": "0.1.0",
+  "license": "BSD-3-Clause",
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "deploy": "npm run type-check && npm run test && devvit upload",
+    "dev": "devvit playtest",
+    "dev:local": "vite --host 127.0.0.1",
+    "launch": "npm run deploy && devvit publish",
+    "login": "devvit login",
+    "test": "vitest run",
+    "type-check": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=22.2.0"
+  },
+  "dependencies": {
+    "@devvit/start": "0.12.24",
+    "@devvit/web": "0.12.24",
+    "@hono/node-server": "1.19.8",
+    "@vitejs/plugin-react": "5.1.2",
+    "devvit": "0.12.24",
+    "hono": "4.11.4",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "zod": "4.3.5"
+  },
+  "devDependencies": {
+    "@types/node": "25.0.0",
+    "@types/react": "19.2.7",
+    "@types/react-dom": "19.2.3",
+    "typescript": "5.9.3",
+    "vite": "7.3.1",
+    "vitest": "4.0.16"
+  }
+}

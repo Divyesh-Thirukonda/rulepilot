@@ -1,0 +1,176 @@
+import { reddit } from '@devvit/web/server';
+import type { Post } from '@devvit/web/server';
+
+import { getRuleById } from '../shared/rules';
+import type {
+  CaseAction,
+  CaseRecord,
+  ClassificationResult,
+  PostInput,
+  RuleConfigV2,
+  RulePilotSettings,
+} from '../shared/types';
+import { deterministicClassifyPost } from './heuristics';
+import { classifyWithOpenAI } from './openai';
+import { enabledRulesFromList, shouldAct } from './policy';
+import { getCase, saveCase } from './storage';
+
+export type ScanDependencies = {
+  settings: RulePilotSettings;
+  rules: RuleConfigV2[];
+  openAiApiKey?: string | undefined;
+  postApi?: Post | undefined;
+  force?: boolean | undefined;
+  now?: Date | undefined;
+};
+
+export async function classifyPost(input: PostInput, dependencies: ScanDependencies): Promise<ClassificationResult> {
+  const rules = enabledRulesFromList(dependencies.rules);
+  const deterministic = deterministicClassifyPost(
+    input,
+    rules,
+    dependencies.now ?? input.createdAt ?? new Date(),
+    dependencies.settings.timezone
+  );
+
+  if (deterministic && deterministic.decision === 'allowed') {
+    return deterministic;
+  }
+
+  if (deterministic && shouldAct(deterministic, dependencies.settings, rules)) {
+    return deterministic;
+  }
+
+  if (dependencies.settings.llmEnabled && dependencies.openAiApiKey) {
+    try {
+      const llm = await classifyWithOpenAI({
+        post: input,
+        rules,
+        apiKey: dependencies.openAiApiKey,
+        model: dependencies.settings.openAiModel,
+      });
+      if (!llm.ruleId || rules.some((rule) => rule.id === llm.ruleId)) {
+        return llm;
+      }
+      return {
+        decision: 'uncertain',
+        ruleId: null,
+        confidence: 0.35,
+        rationale: `The LLM returned an unknown rule id (${llm.ruleId}), so RulePilot logged the case without action.`,
+        suggestedAction: 'log',
+        source: 'fallback',
+        matchedSignals: ['unknown LLM rule id'],
+      };
+    } catch (error) {
+      return {
+        decision: deterministic?.decision ?? 'uncertain',
+        ruleId: deterministic?.ruleId ?? null,
+        confidence: Math.min(deterministic?.confidence ?? 0.35, 0.69),
+        rationale:
+          deterministic?.rationale ??
+          `LLM classification was unavailable, so RulePilot logged this post for manual review. ${error instanceof Error ? error.message : ''}`.trim(),
+        suggestedAction: deterministic?.suggestedAction ?? 'log',
+        source: 'fallback',
+        matchedSignals: deterministic?.matchedSignals ?? ['llm unavailable'],
+      };
+    }
+  }
+
+  return (
+    deterministic ?? {
+      decision: 'allowed',
+      ruleId: null,
+      confidence: 0.25,
+      rationale: 'No deterministic rule matched and LLM classification is disabled or not configured.',
+      suggestedAction: 'allow',
+      source: 'fallback',
+      matchedSignals: [],
+    }
+  );
+}
+
+export async function applyModerationAction(options: {
+  result: ClassificationResult;
+  settings: RulePilotSettings;
+  rules: RuleConfigV2[];
+  postApi?: Post | undefined;
+}): Promise<{ action: CaseAction; actionError?: string | undefined }> {
+  if (!shouldAct(options.result, options.settings, options.rules)) {
+    return { action: options.result.suggestedAction === 'allow' ? 'none' : 'logged' };
+  }
+
+  if (!options.postApi) {
+    return { action: 'logged', actionError: 'Post API object was unavailable; no moderation action was taken.' };
+  }
+
+  const rule = options.rules.find((r) => r.id === options.result.ruleId) ?? getRuleById(options.result.ruleId);
+  const reason = `RulePilot: ${rule?.title ?? options.result.ruleId ?? 'needs review'} (${Math.round(
+    options.result.confidence * 100
+  )}%)`;
+
+  if (options.settings.scanMode === 'monitor') {
+    return { action: 'logged' };
+  }
+
+  if (options.settings.scanMode === 'flag' || options.result.suggestedAction === 'flag_for_review') {
+    try {
+      await reddit.report(options.postApi, { reason });
+      return { action: 'flagged' };
+    } catch (error) {
+      return {
+        action: 'error',
+        actionError: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  if (options.settings.scanMode === 'filter' && options.result.suggestedAction === 'filter_to_modqueue') {
+    try {
+      await options.postApi.filter(reason, false);
+      return { action: 'filtered' };
+    } catch (error) {
+      return {
+        action: 'filter_unavailable',
+        actionError: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  return { action: 'logged' };
+}
+
+export async function scanPost(input: PostInput, dependencies: ScanDependencies): Promise<CaseRecord> {
+  const existing = await getCase(input.id);
+  if (existing && !dependencies.force) {
+    return existing;
+  }
+
+  const rules = enabledRulesFromList(dependencies.rules);
+  const result = await classifyPost(input, dependencies);
+  const moderation = await applyModerationAction({
+    result,
+    settings: dependencies.settings,
+    rules,
+    postApi: dependencies.postApi,
+  });
+  const now = new Date().toISOString();
+  const record: CaseRecord = {
+    id: `${input.id}:${Date.now()}`,
+    postId: input.id,
+    postTitle: input.title,
+    subredditName: input.subredditName,
+    createdAt: existing?.createdAt ?? now,
+    updatedAt: now,
+    result,
+    action: moderation.action,
+  };
+  if (input.permalink) {
+    record.postPermalink = input.permalink;
+  }
+  if (moderation.actionError) {
+    record.actionError = moderation.actionError;
+  }
+
+  await saveCase(record);
+  return record;
+}

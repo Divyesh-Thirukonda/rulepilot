@@ -1,0 +1,3 @@
+This should be a running doc of things that we as a team notice while building the project and think could be improved in the devvit platform. We would want to make Reddit better, so we're compiling these suggestions in the hope that it helps make the platform better. The Devvit team can then use this list to prioritize their roadmap. One example could be tradeoffs we had to make due to the constraints of the platform and how we would have liked to see it if the platform was different.
+
+1.
