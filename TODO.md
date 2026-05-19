@@ -45,7 +45,7 @@ Note: Whenever more things need to be added to the todo like when you discover n
 
 ## P1: UX And Design Polish
 
-- !!! [x] Make the dashboard feel like a mature moderation console instead of a quick prototype:
+- [x] Make the dashboard feel like a mature moderation console instead of a quick prototype:
   - [x] compact table or split-list layout for repeat scanning;
   - [x] clear rule, confidence, action, and feedback columns;
   - [x] right-side detail panel or expandable case detail;
@@ -79,10 +79,10 @@ Note: Whenever more things need to be added to the todo like when you discover n
 ## P1: Rule Studio For Mod-Built Rules
 Think like we're basically giving them conditions (datetime = sunday [from datetime], body = lazy [ ai-classifications, either lazy, spam, rude, and custom descriptions, etc ], spam = true, etc) and actions [add to mod queue, auto approve, auto ban for x hours, etc]
 
-- !!! [x] Build a `Rule Studio` dashboard tab where moderators can create, edit, disable, import, and export rules.
-- !!! [x] Move from hardcoded preset-only rules to `RuleConfigV2` stored per subreddit in Redis.
-- !!! [x] Keep the r/csMajors preset as an installable starter pack, not the only supported rule set.
-- !!! [x] Add rule fields:
+- [x] Build a `Rule Studio` dashboard tab where moderators can create, edit, disable, import, and export rules.
+- [x] Move from hardcoded preset-only rules to `RuleConfigV2` stored per subreddit in Redis.
+- [x] Keep the r/csMajors preset as an installable starter pack, not the only supported rule set.
+- [x] Add rule fields:
   - [x] title;
   - [x] plain-English description;
   - [x] examples that should match;
@@ -93,7 +93,7 @@ Think like we're basically giving them conditions (datetime = sunday [from datet
   - [x] suggested action;
   - [x] redirect guidance;
   - [x] mod-only notes.
-- !!! [x] Add rule conditions:
+- [x] Add rule conditions:
   - [x] keyword or phrase matches;
   - [x] regex matches;
   - [x] post type: text, link, media, poll, crosspost;
@@ -103,7 +103,7 @@ Think like we're basically giving them conditions (datetime = sunday [from datet
   - [x] day of week;
   - [x] time window using subreddit timezone;
   - [x] custom semantic category such as spam, low quality, rude, meme, survey, hiring, referral, AI/LLM policy, or custom topic.
-- !!! [x] Add a hackathon-demo rule simulator:
+- [x] Add a hackathon-demo rule simulator:
   - [x] paste a sample post title/body/flair/url;
   - [x] choose post type and sample datetime;
   - [x] run deterministic checks for the current draft rule;
@@ -113,8 +113,8 @@ Think like we're basically giving them conditions (datetime = sunday [from datet
 
 ## P1: Better LLM Classification
 
-- !!! [x] Improve the OpenAI prompt to be more conservative and rubric-based.
-- !!! [x] Enrich the structured feature payload sent to the LLM:
+- [x] Improve the OpenAI prompt to be more conservative and rubric-based.
+- [x] Enrich the structured feature payload sent to the LLM:
   - [x] title / body excerpt;
   - [x] flair text;
   - [x] URL domain;
@@ -122,9 +122,9 @@ Think like we're basically giving them conditions (datetime = sunday [from datet
   - [x] created weekday and local time using the subreddit timezone setting;
   - [x] enabled rules only;
   - [x] body/title quality indicators when available (length, presence of links, presence of media, question-mark heuristic).
-- !!! [x] Ask the LLM for evidence spans or short evidence bullets, not just a generic rationale.
-- !!! [x] Add an explicit `insufficient_context` outcome.
-- !!! [x] Add rule-specific confidence calibration:
+- [x] Ask the LLM for evidence spans or short evidence bullets, not just a generic rationale.
+- [x] Add an explicit `insufficient_context` outcome.
+- [x] Add rule-specific confidence calibration:
   - [x] memes can be high-confidence from signals;
   - [x] out-of-scope should require strong evidence;
   - [x] low-quality should default to needs-review;
@@ -137,37 +137,39 @@ Think like we're basically giving them conditions (datetime = sunday [from datet
 
 ## P1: Rerouting Instead Of Removal
 
-- !!! [x] Add first-class routing actions:
+- [x] Add first-class routing actions:
   - [x] no action;
   - [x] log only;
   - [x] flag/report for review;
   - [x] filter to mod queue;
-- !!! [x] Add redirect metadata to rules without making it an automatic messaging/removal system:
+- [x] Add redirect metadata to rules without making it an automatic messaging/removal system:
   - [x] `redirectTargetType`: subreddit, megathread, URL, or custom;
   - [x] `redirectTarget`: subreddit name, manually configured megathread, URL, or custom label;
   - [x] `redirectTemplate`: moderator-facing guidance text;
   - [x] legacy `redirect` still falls back as guidance when structured fields are missing.
-- !!! [x] Add redirect templates:
+- [x] Add redirect templates:
   - [x] "Please post this in r/cscareerquestions";
   - [x] "Please use the resume sticky";
   - [x] "Please use the weekly questions thread";
   - [x] "Please use r/college for general college questions";
   - [x] custom subreddit or wiki URL.
-- !!! [x] Move to megathread: One of the rerouting options should be to move posts to a megathread, if the subreddit has a megathread posted for that particular topic.
+- [x] Move to megathread: One of the rerouting options should be to move posts to a megathread, if the subreddit has a megathread posted for that particular topic.
   - [x] MVP uses manually configured megathread title or URL; no automatic sticky discovery.
-- !!! [x] Move to different subreddit: Add a "Create draft to r/X" button: when a post is rerouted, send the user a message with a pre-filled draft link so they can easily repost to the suggested subreddit instead of just being told "post elsewhere" (like how it says please post to r/X instead and a create draft button can be messaged to the user in that case).
+- [x] Move to different subreddit: Add a "Create draft to r/X" button: when a post is rerouted, send the user a message with a pre-filled draft link so they can easily repost to the suggested subreddit instead of just being told "post elsewhere" (like how it says please post to r/X instead and a create draft button can be messaged to the user in that case).
   - [x] MVP opens a moderator-facing Reddit submit URL only; it does not send the author a DM.
-- !!! [x] Avoid automated unsolicited DMs. Prefer moderator-confirmed comments, removal reasons, or dashboard copy.
+- [x] Avoid automated unsolicited DMs. Prefer moderator-confirmed comments, removal reasons, or dashboard copy.
   - [x] Dashboard shows copy/open/draft controls only after a case matches a redirect-configured rule.
-- !!! [ ] Escalate to ban: Escalate to mod with suggested temporary ban (12 hours by default, duration editable by mod) — mod must confirm before any account action is taken.
-- !!! [ ] Keep account actions out of the MVP. For spammer rules, show "escalate to mod" / "suggest temporary ban (X hours/days)" only after explicit moderator confirmation and only if Devvit API support and policy review are clear.
-- !!! [ ] If the rule the author violated is fixable, allow the mod to create a new post for the user with the same content as the original but with the rule fixed (maybe the edited post can just be sent back to the user as a draft for them ready to be posted, they can choose to edit it further if needed). For example, if a user posts a meme on a weekday, the mod can send the user a DM with the meme as a draft with instructions to post on a weekend post instead (or it could be a draft and instead of instructions, we have it scheduled for the weekend automatically, but again the user might not understand why it's scheduled for the weekend so maybe an instruction note would be needed in the dm). Plan this out, and idek if this is a featue in the devvit so figure that out too.
+- ... [ ] Escalate to ban: Escalate to mod with suggested temporary ban (12 hours by default, duration editable by mod) — mod must confirm before any account action is taken.
+- ... [ ] Keep account actions out of the MVP. For spammer rules, show "escalate to mod" / "suggest temporary ban (X hours/days)" only after explicit moderator confirmation and only if Devvit API support and policy review are clear.
+- ... [x] If the rule the author violated is fixable, allow the mod to create a new post for the user with the same content as the original but with the rule fixed (maybe the edited post can just be sent back to the user as a draft for them ready to be posted, they can choose to edit it further if needed). For example, if a user posts a meme on a weekday, the mod can send the user a DM with the meme as a draft with instructions to post on a weekend post instead (or it could be a draft and instead of instructions, we have it scheduled for the weekend automatically, but again the user might not understand why it's scheduled for the weekend so maybe an instruction note would be needed in the dm). Plan this out, and idek if this is a featue in the devvit so figure that out too.
+  - [x] MVP uses mod-facing fixed-post draft links instead of automatic DMs or scheduling.
+  - [x] Drafts include the original post link and repair guidance, but do not store or copy the full original post body.
 
 
 ## P1: AI-Assisted Rule Builder
 
-- !!! [x] Build `RulePilot AI Builder`, a mod-facing assistant for drafting rules (cuz at the end of the day, we dont wanna develop the rules FOR the mods, that's what they'll be doing perhaps with the help of an ai to help them develop a rule themselves, so we need a way for mods to develop these rules).
-- !!! [x] Treat the builder as a tool-oriented workflow:
+- [x] Build `RulePilot AI Builder`, a mod-facing assistant for drafting rules (cuz at the end of the day, we dont wanna develop the rules FOR the mods, that's what they'll be doing perhaps with the help of an ai to help them develop a rule themselves, so we need a way for mods to develop these rules).
+- [x] Treat the builder as a tool-oriented workflow:
   - [x] parse moderator intent;
   - [x] ask clarifying questions when the rule is ambiguous;
   - [x] generate a draft `RuleConfigV2`;
@@ -176,9 +178,9 @@ Think like we're basically giving them conditions (datetime = sunday [from datet
   - [x] generate positive and negative test cases;
   - [x] simulate the draft against examples;
   - [x] save as a disabled draft until a mod enables it.
-- !!! [x] Consider an MCP-esque internal architecture for local development if it helps, but do not add platform complexity unless it clearly improves the product.
+- [x] Consider an MCP-esque internal architecture for local development if it helps, but do not add platform complexity unless it clearly improves the product.
   - [x] Chose ordinary server helpers and one structured OpenAI call; no MCP-style runtime added for the hackathon MVP.
-- !!! [x] Button to auto-import all written rules from in the subreddit rule section and auto-populate the rules for no rules exist in studio (like they're yet to be imported) and of course some rules may not exist, for which an llm prompt will be generated to generate the rules based on the subreddit's content and the moderator's intent.
+- [x] Button to auto-import all written rules from in the subreddit rule section and auto-populate the rules for no rules exist in studio (like they're yet to be imported) and of course some rules may not exist, for which an llm prompt will be generated to generate the rules based on the subreddit's content and the moderator's intent.
 - !.. [x] Add one-click and natural language rule creation flows:
   - [x] "Only allow memes on Sundays";
   - [x] "Route resume posts to a megathread";
@@ -188,7 +190,7 @@ Think like we're basically giving them conditions (datetime = sunday [from datet
   - [ ] "Route laptop buying advice elsewhere";
   - [ ] "Flag Amazon-specific posts";
   - [ ] "Flag custom restricted topic".
-- ... [x] Add validation so AI-generated rules cannot:
+- [x] Add validation so AI-generated rules cannot:
   - [x] inspect author history;
   - [x] call unapproved external services;
   - [x] schedule broad crawls;
@@ -212,7 +214,7 @@ Think like we're basically giving them conditions (datetime = sunday [from datet
   - [ ] spoiler/title formatting;
   - [ ] link-domain allowlist or blocklist;
   - [ ] custom restricted topic.
-- !!! [ ] Add a generic "education subreddit" pack for r/EngineeringStudents-style communities.
+- ... [x] Add a generic "education subreddit" pack for r/EngineeringStudents-style communities.
 - ... [ ] Add a generic "career subreddit" pack for r/cscareerquestions-style communities.
 - ... [ ] Add rule pack metadata:
   - [ ] source community;
@@ -223,13 +225,13 @@ Think like we're basically giving them conditions (datetime = sunday [from datet
 
 ## P1: Working With Existing Reddit Mod Tooling
 
-- !!! [x] Add a "RulePilot did nothing because AutoModerator already acted" status when detectable.
-- !!! [x] Add documentation explaining how RulePilot should be layered with subreddit rules, AutoModerator, removal reasons, and mod queue.
+- [x] Add a "RulePilot did nothing because AutoModerator already acted" status when detectable.
+- [x] Add documentation explaining how RulePilot should be layered with subreddit rules, AutoModerator, removal reasons, and mod queue.
 - ... [ ] Add an AutoModerator-compatible mindset:
   - [ ] deterministic rules first;
   - [ ] semantic triage only when regex/keywords are insufficient;
   - [ ] show when a rule could be better handled by AutoModerator.
-- ... [x] Consider listening to `onAutomoderatorFilterPost` only to annotate or measure cases that AutoModerator already filtered, not to duplicate its work.
+- [x] Consider listening to `onAutomoderatorFilterPost` only to annotate or measure cases that AutoModerator already filtered, not to duplicate its work.
 - ... [ ] Consider `onModAction` only for posts RulePilot touched, so the app can learn aggregate outcomes without broad modlog mining.
 
 ## P2: Evaluation And Reliability

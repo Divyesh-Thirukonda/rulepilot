@@ -12,7 +12,9 @@ RulePilot is a human-in-the-loop moderation assistant for subreddits with rules 
 
 It scans new posts, explains likely rule matches, and gives moderators a dashboard for reviewing cases, tracking false positives, and improving rules over time. It ships with an r/csMajors starter pack, but moderators can also create their own rules in Rule Studio.
 
-RulePilot also includes an AI Builder that helps moderators draft new rules from natural language, one-click templates, or existing subreddit rules. Generated rules are saved as disabled drafts so mods can review, test, edit, and enable them when ready.
+RulePilot also includes an AI Builder that helps moderators draft new rules from natural language, one-click templates, or existing subreddit rules. Generated rules are saved as disabled drafts so mods can review, test, edit, and enable them when ready. For broader demos, it includes a generic education-community starter pack for r/EngineeringStudents-style communities.
+
+For violations that are fixable, RulePilot can show moderators repair guidance and open a fixed-post draft link. The draft includes the original post link and instructions for what to change, but it does not automatically message users, schedule reposts, or store the full original post body.
 
 ## How we built it
 

@@ -1,6 +1,6 @@
 import { redis } from '@devvit/web/server';
 
-import { CS_MAJORS_PRESET } from '../shared/rules';
+import { CS_MAJORS_PRESET, EDUCATION_SUBREDDIT_PRESET } from '../shared/rules';
 import type { RuleConfigV2 } from '../shared/types';
 
 const RULES_KEY_PREFIX = 'rulepilot:rules:';
@@ -111,6 +111,11 @@ export async function importRules(subredditName: string, incoming: RuleConfigV2[
 
   await saveSubredditRules(subredditName, rules);
   return rules;
+}
+
+/** Add the generic education subreddit starter pack without overwriting existing rules. */
+export async function addEducationPreset(subredditName: string): Promise<RuleConfigV2[]> {
+  return importRules(subredditName, EDUCATION_SUBREDDIT_PRESET);
 }
 
 /** Export all rules for a subreddit. */

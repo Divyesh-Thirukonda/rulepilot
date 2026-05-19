@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  createRepairDraftUrl,
   createSubredditDraftUrl,
   isValidRedirectTarget,
   redirectForRule,
@@ -96,5 +97,21 @@ describe('redirect helpers', () => {
     expect(isValidRedirectTarget('url', 'ftp://example.com')).toBe(false);
     expect(isValidRedirectTarget('megathread', 'Resume sticky')).toBe(true);
     expect(isValidRedirectTarget('custom', 'Ask mods first')).toBe(true);
+  });
+
+  it('creates same-subreddit fixed-post drafts without copying original body', () => {
+    const draftUrl = createRepairDraftUrl({
+      subredditName: 'csMajors',
+      postTitle: 'POV: compiler errors on Monday',
+      repairTemplate: 'Please repost this on Sunday if appropriate.',
+      postPermalink: '/r/csMajors/comments/fixable/title/',
+    });
+
+    expect(draftUrl).toContain('https://www.reddit.com/r/csMajors/submit?');
+    const params = new URL(draftUrl!).searchParams;
+    expect(params.get('title')).toBe('POV: compiler errors on Monday');
+    expect(params.get('text')).toContain('Please repost this on Sunday if appropriate.');
+    expect(params.get('text')).toContain('Original post: https://www.reddit.com/r/csMajors/comments/fixable/title/');
+    expect(params.get('text')).toContain('RulePilot does not copy or store the original post body.');
   });
 });

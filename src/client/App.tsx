@@ -4,11 +4,11 @@ import { createRoot } from 'react-dom/client';
 
 import type {
   CaseFeedback, CaseRecord, ConditionField, ConditionType, DashboardStats,
-  DashboardTab, PostType, RedirectTargetType, RuleAction, RuleCategory, RuleCondition, RuleConfigV2,
+  DashboardTab, PostType, RedirectTargetType, RepairStrategy, RuleAction, RuleCategory, RuleCondition, RuleConfigV2,
   RuleBuilderResponse, RuleBuilderTemplateId, RulePilotSettings,
 } from '../shared/types';
 import { ROUTING_ACTIONS, routingActionDefinition, routingActionLabel, routingActionStatusClass } from '../shared/actions';
-import { createSubredditDraftUrl, redirectForRule, redirectTargetUrl } from '../shared/redirects';
+import { createRepairDraftUrl, createSubredditDraftUrl, redirectForRule, redirectTargetUrl } from '../shared/redirects';
 import './styles.css';
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -59,6 +59,12 @@ const categoryLabels: Record<RuleCategory, string> = {
 };
 const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const POST_TYPES: PostType[] = ['text', 'link', 'media', 'poll', 'crosspost'];
+const REPAIR_STRATEGIES: Array<{ value: RepairStrategy; label: string }> = [
+  { value: 'repost_later', label: 'Repost later' },
+  { value: 'add_context', label: 'Add context' },
+  { value: 'use_thread', label: 'Use thread' },
+  { value: 'custom', label: 'Custom' },
+];
 const BUILDER_TEMPLATES: Array<{ id: RuleBuilderTemplateId; label: string; description: string }> = [
   {
     id: 'sunday_memes',
@@ -364,6 +370,43 @@ function RoutingPanel({ item, rule }: { item: CaseRecord; rule: RuleConfigV2 | u
   );
 }
 
+function RepairPanel({ item, rule }: { item: CaseRecord; rule: RuleConfigV2 | undefined }) {
+  const [copied, setCopied] = useState(false);
+  const template = rule?.repairTemplate?.trim();
+  if (!template) return null;
+  const href = item.postPermalink ? new URL(item.postPermalink, 'https://www.reddit.com').toString() : undefined;
+  const draftUrl = createRepairDraftUrl({
+    subredditName: item.subredditName,
+    postTitle: item.postTitle,
+    postPermalink: href,
+    repairTemplate: template,
+  });
+  const copyRepair = async () => {
+    try {
+      await navigator.clipboard.writeText(template);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      window.prompt('Copy fixed-post guidance', template);
+    }
+  };
+  return (
+    <section className="detail-section repair-panel">
+      <div className="routing-heading">
+        <div>
+          <h3>Fixed-post draft</h3>
+          <span>{rule?.repairStrategy ? REPAIR_STRATEGIES.find((item) => item.value === rule.repairStrategy)?.label ?? rule.repairStrategy : 'Guidance'}</span>
+        </div>
+      </div>
+      <p>{template}</p>
+      <div className="routing-actions">
+        <button className="secondary-button" type="button" onClick={() => void copyRepair()}>{copied ? 'Copied' : 'Copy fix guidance'}</button>
+        {draftUrl ? <a className="secondary-button link-button" href={draftUrl} rel="noreferrer" target="_blank">Create fixed draft</a> : null}
+      </div>
+    </section>
+  );
+}
+
 function CaseTable({ cases, rules, selectedId, onSelect }: { cases: CaseRecord[]; rules: RuleConfigV2[]; selectedId: string | null; onSelect: (id: string) => void }) {
   const selectedIndex = Math.max(0, cases.findIndex((item) => item.id === selectedId));
   const focusRow = (index: number) => {
@@ -439,6 +482,7 @@ function CaseDetail({ item, rules, onSaved }: { item: CaseRecord | undefined; ru
       <section className="detail-section"><h3>Rationale</h3><p>{item.result.rationale}</p></section>
       <section className="detail-section"><h3>Signals</h3><ul>{signals.map((s) => <li key={s}>{s}</li>)}</ul></section>
       <RoutingPanel item={item} rule={matchedRule} />
+      <RepairPanel item={item} rule={matchedRule} />
       <section className="detail-section"><h3>Review</h3><div className="detail-actions"><FeedbackButton postId={item.postId} feedback="correct" onSaved={onSaved}>Correct</FeedbackButton><FeedbackButton postId={item.postId} feedback="false_positive" onSaved={onSaved}>False positive</FeedbackButton></div>{item.actionError ? <p className="error-note">{item.actionError}</p> : null}</section>
       {href ? <a className="post-link" href={href} rel="noreferrer" target="_blank">Open post</a> : null}
     </aside>
@@ -658,6 +702,40 @@ function RedirectEditor({ form, setForm }: { form: Partial<RuleConfigV2>; setFor
   );
 }
 
+function RepairEditor({ form, setForm }: { form: Partial<RuleConfigV2>; setForm: (rule: Partial<RuleConfigV2>) => void }) {
+  return (
+    <section className="redirect-editor">
+      <div className="redirect-editor-heading">
+        <div>
+          <h3>Fixed-post draft</h3>
+          <span>Optional mod-facing guidance for violations the author can fix and repost. RulePilot opens a draft; it does not DM, schedule, or copy the original body.</span>
+        </div>
+      </div>
+      <div className="redirect-preset-row">
+        <label className="editor-field">
+          <span>Repair type</span>
+          <select
+            value={form.repairStrategy ?? ''}
+            onChange={(e) => setForm({ ...form, repairStrategy: e.target.value ? e.target.value as RepairStrategy : undefined })}
+          >
+            <option value="">None</option>
+            {REPAIR_STRATEGIES.map((strategy) => <option key={strategy.value} value={strategy.value}>{strategy.label}</option>)}
+          </select>
+        </label>
+        <label className="editor-field full">
+          <span>Fix guidance</span>
+          <textarea
+            rows={3}
+            value={form.repairTemplate ?? ''}
+            onChange={(e) => setForm({ ...form, repairTemplate: e.target.value })}
+            placeholder="Example: Please add course context, what you tried, and the specific question before reposting."
+          />
+        </label>
+      </div>
+    </section>
+  );
+}
+
 function RuleEditor({ initial, onSave, onCancel, saving, timezone }: { initial: Partial<RuleConfigV2>; onSave: (r: Partial<RuleConfigV2>) => void; onCancel: () => void; saving: boolean; timezone: string }) {
   const [form, setForm] = useState<Partial<RuleConfigV2>>({ ...initial });
   const conditions = form.conditions ?? [];
@@ -681,6 +759,7 @@ function RuleEditor({ initial, onSave, onCancel, saving, timezone }: { initial: 
       </div>
       <RuleSimulator rule={form} timezone={timezone} />
       <RedirectEditor form={form} setForm={setForm} />
+      <RepairEditor form={form} setForm={setForm} />
       <label className="editor-field full"><span>Mod notes (internal)</span><textarea rows={2} value={form.modNotes ?? ''} onChange={(e) => setForm({ ...form, modNotes: e.target.value })} placeholder="Internal notes only visible to moderators" /></label>
       <div className="editor-actions">
         <button className="primary-button" disabled={saving || !form.title?.trim()} onClick={() => onSave(form)}>{saving ? 'Saving…' : (initial.id ? 'Save changes' : 'Create rule')}</button>
@@ -918,6 +997,16 @@ function RuleStudio({ rules, refresh, timezone }: { rules: RuleConfigV2[]; refre
     };
     input.click();
   };
+  const handleAddEducationPack = async () => {
+    setError(null);
+    try {
+      const response = await fetch('/api/rules/v2/add-education-pack', { method: 'POST' });
+      await requireOk(response, 'Could not add education starter pack');
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
 
   return (
     <section className="rule-studio">
@@ -926,6 +1015,7 @@ function RuleStudio({ rules, refresh, timezone }: { rules: RuleConfigV2[]; refre
         <div className="rs-header-actions">
           <button className="secondary-button" onClick={handleImport}>Import</button>
           <button className="secondary-button" onClick={() => void handleExport()}>Export</button>
+          <button className="secondary-button" onClick={() => void handleAddEducationPack()}>Add Education Pack</button>
           <button className="primary-button" onClick={() => { setCreating(true); setEditingId(null); }}>+ New Rule</button>
         </div>
       </div>

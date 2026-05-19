@@ -88,3 +88,26 @@ export function createSubredditDraftUrl(options: {
   });
   return `https://www.reddit.com/r/${subreddit}/submit?${params.toString()}`;
 }
+
+export function createRepairDraftUrl(options: {
+  subredditName: string;
+  postTitle: string;
+  repairTemplate: string;
+  postPermalink?: string | undefined;
+}): string | undefined {
+  const subreddit = subredditNameFromTarget(options.subredditName);
+  if (!subreddit || !options.repairTemplate.trim()) return undefined;
+  const body = [
+    'RulePilot fixed-post draft.',
+    options.postPermalink ? `Original post: ${new URL(options.postPermalink, 'https://www.reddit.com').toString()}` : undefined,
+    '',
+    options.repairTemplate.trim(),
+    '',
+    'Edit this draft before posting. RulePilot does not copy or store the original post body.',
+  ].filter((part) => part !== undefined).join('\n');
+  const params = new URLSearchParams({
+    title: options.postTitle,
+    text: body,
+  });
+  return `https://www.reddit.com/r/${subreddit}/submit?${params.toString()}`;
+}

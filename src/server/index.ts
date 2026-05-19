@@ -19,6 +19,7 @@ import type {
   ConditionType,
   PostType,
   RedirectTargetType,
+  RepairStrategy,
   RuleBuilderRequest,
   RuleBuilderResponse,
   RuleAction,
@@ -35,6 +36,7 @@ import { getOpenAiApiKey, getRulePilotSettings } from './settings';
 import { buildStats, deleteCase, getRecentCases, saveCase, updateCaseFeedback } from './storage';
 import { postInputFromPost, postInputFromPostV2, postInputFromTrigger } from './post-input';
 import {
+  addEducationPreset,
   deleteRule,
   exportRules,
   getSubredditRules,
@@ -57,6 +59,7 @@ const VALID_CONDITION_FIELDS = new Set<ConditionField>(['title', 'body', 'title_
 const VALID_POST_TYPES = new Set<PostType>(['text', 'link', 'media', 'poll', 'crosspost']);
 const VALID_DAYS = new Set(['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']);
 const VALID_REDIRECT_TARGET_TYPES = new Set<RedirectTargetType>(['subreddit', 'megathread', 'url', 'custom']);
+const VALID_REPAIR_STRATEGIES = new Set<RepairStrategy>(['repost_later', 'add_context', 'use_thread', 'custom']);
 const MAX_TITLE_LEN = 200;
 const MAX_DESC_LEN = 2000;
 const MAX_EXAMPLES = 20;
@@ -64,6 +67,7 @@ const MAX_CONDITIONS = 30;
 const MAX_CONDITION_VALUE_LEN = 1000;
 const MAX_REDIRECT_TARGET_LEN = 500;
 const MAX_REDIRECT_TEMPLATE_LEN = 1200;
+const MAX_REPAIR_TEMPLATE_LEN = 1200;
 
 function splitConditionValue(value: string): string[] {
   return value.split('|').map((part) => part.trim()).filter(Boolean);
@@ -249,6 +253,17 @@ function validateRuleInput(body: Partial<RuleConfigV2>): string | null {
   if (body.modNotes !== undefined && typeof body.modNotes !== 'string') {
     return 'Mod notes must be a string.';
   }
+  if (body.repairStrategy !== undefined && !VALID_REPAIR_STRATEGIES.has(body.repairStrategy)) {
+    return `Invalid repair strategy. Must be one of: ${[...VALID_REPAIR_STRATEGIES].join(', ')}.`;
+  }
+  if (body.repairTemplate !== undefined) {
+    if (typeof body.repairTemplate !== 'string') {
+      return 'Repair template must be a string.';
+    }
+    if (body.repairTemplate.length > MAX_REPAIR_TEMPLATE_LEN) {
+      return `Repair template must be ${MAX_REPAIR_TEMPLATE_LEN} characters or fewer.`;
+    }
+  }
   if (body.conditions !== undefined) {
     if (!Array.isArray(body.conditions)) {
       return 'Conditions must be an array.';
@@ -310,6 +325,22 @@ function copyRedirectFields(target: RuleConfigV2, body: Partial<RuleConfigV2>, e
     target.redirect = body.redirect.trim();
   } else if (existing?.redirect !== undefined) {
     target.redirect = existing.redirect;
+  }
+  const clearsRepair = body.repairStrategy === undefined && body.repairTemplate !== undefined && body.repairTemplate.trim() === '';
+  if (clearsRepair) {
+    delete target.repairStrategy;
+    delete target.repairTemplate;
+  } else {
+    if (body.repairStrategy !== undefined) {
+      target.repairStrategy = body.repairStrategy;
+    } else if (existing?.repairStrategy !== undefined) {
+      target.repairStrategy = existing.repairStrategy;
+    }
+    if (body.repairTemplate !== undefined) {
+      target.repairTemplate = body.repairTemplate.trim();
+    } else if (existing?.repairTemplate !== undefined) {
+      target.repairTemplate = existing.repairTemplate;
+    }
   }
 }
 
@@ -698,6 +729,17 @@ app.post('/api/rules/v2/seed-preset', async (c) => {
   return c.json({ rules });
 });
 
+/** Add the generic education subreddit starter pack. */
+app.post('/api/rules/v2/add-education-pack', async (c) => {
+  const allowed = await requireModerator(c);
+  if (allowed !== true) {
+    return allowed;
+  }
+  const subredditName = context.subredditName ?? 'unknown';
+  const rules = await addEducationPreset(subredditName);
+  return c.json({ rules });
+});
+
 /** Export all rules as JSON. */
 app.get('/api/rules/v2/export', async (c) => {
   const allowed = await requireModerator(c);
@@ -738,6 +780,7 @@ app.post('/api/rules/v2/import', async (c) => {
     redirectTarget: r.redirectTarget?.trim(),
     redirectTemplate: r.redirectTemplate?.trim(),
     redirect: r.redirect?.trim(),
+    repairTemplate: r.repairTemplate?.trim(),
   }));
   const rules = await importRules(subredditName, sanitized);
   return c.json({ rules });

@@ -2,6 +2,8 @@ export type RuleAction = 'allow' | 'log' | 'flag' | 'filter';
 
 export type RedirectTargetType = 'subreddit' | 'megathread' | 'url' | 'custom';
 
+export type RepairStrategy = 'repost_later' | 'add_context' | 'use_thread' | 'custom';
+
 export type RuleCategory =
   | 'scope'
   | 'civility'
@@ -71,6 +73,8 @@ export type RuleConfigV2 = {
   redirectTarget?: string | undefined;
   redirectTemplate?: string | undefined;
   redirect?: string | undefined;
+  repairStrategy?: RepairStrategy | undefined;
+  repairTemplate?: string | undefined;
   modNotes?: string | undefined;
   conditions: RuleCondition[];
   createdAt: string;

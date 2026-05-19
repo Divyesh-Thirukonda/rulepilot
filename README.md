@@ -2,7 +2,7 @@
 
 RulePilot is a Devvit moderation app for communities whose rules are too nuanced for simple regex. It scans new posts, explains likely rule matches, and routes high-confidence cases to moderator review instead of taking irreversible action.
 
-The app ships with an r/csMajors preset covering scope, memes, surveys/hiring/referrals, resumes, live OA questions, low-quality posts, common questions, AI/LLM content policy, college comparisons, laptop posts, restricted topics, and personal projects.
+The app ships with an r/csMajors preset covering scope, memes, surveys/hiring/referrals, resumes, live OA questions, low-quality posts, common questions, AI/LLM content policy, college comparisons, laptop posts, restricted topics, and personal projects. It also includes a generic education-community starter pack for r/EngineeringStudents-style communities.
 
 ## What It Does
 
@@ -10,6 +10,7 @@ The app ships with an r/csMajors preset covering scope, memes, surveys/hiring/re
 - Uses OpenAI structured outputs for ambiguous rule-routing when enabled.
 - Stores an audit trail in Redis with the matched rule, confidence, explanation, action, and mod feedback.
 - Helps moderators draft new rules from natural language, one-click templates, or existing subreddit rules. AI-generated rules are saved as disabled drafts until a moderator reviews and enables them.
+- Provides mod-facing fixed-post draft links for rules that authors can repair, such as adding context, using a megathread, or reposting on an allowed day.
 - Records when AutoModerator already filtered a post so RulePilot can stand down and show that status in the dashboard.
 - Adds moderator menu actions:
   - `Scan with RulePilot`
@@ -24,7 +25,7 @@ RulePilot is human-in-the-loop by default. In `filter` mode, high-confidence cas
 
 RulePilot is event-driven: it evaluates new post submissions, AutoModerator filter events, and explicit moderator menu scans. It does not run hourly backfills, crawl community history, replace AutoModerator, or bypass Reddit's native mod queue and safety tooling.
 
-RulePilot does not ban users, inspect author history, scan other subreddits, DM users, or make claims that it can reliably detect AI-generated text. Redis audit records expire after 30 days, and records for deleted posts are removed when Reddit sends a post deletion event.
+RulePilot does not ban users, inspect author history, scan other subreddits, DM users, schedule reposts, copy full post bodies into drafts, or make claims that it can reliably detect AI-generated text. Redis audit records expire after 30 days, and records for deleted posts are removed when Reddit sends a post deletion event.
 
 ## Working With Existing Reddit Mod Tools
 
