@@ -175,7 +175,7 @@ export async function applyModerationAction(options: {
   }
 
   const rule = options.rules.find((r) => r.id === options.result.ruleId) ?? getRuleById(options.result.ruleId);
-  const reason = `RulePilot: ${rule?.title ?? options.result.ruleId ?? 'needs review'} (${Math.round(
+  const reason = `${rule?.title ?? options.result.ruleId ?? 'needs review'} (${Math.round(
     options.result.confidence * 100
   )}%)`;
 
