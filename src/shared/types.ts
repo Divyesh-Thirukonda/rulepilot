@@ -1,5 +1,7 @@
 export type RuleAction = 'allow' | 'log' | 'flag' | 'filter';
 
+export type RedirectTargetType = 'subreddit' | 'megathread' | 'url' | 'custom';
+
 export type RuleCategory =
   | 'scope'
   | 'civility'
@@ -65,6 +67,9 @@ export type RuleConfigV2 = {
   threshold: number;
   category: RuleCategory;
   enabled: boolean;
+  redirectTargetType?: RedirectTargetType | undefined;
+  redirectTarget?: string | undefined;
+  redirectTemplate?: string | undefined;
   redirect?: string | undefined;
   modNotes?: string | undefined;
   conditions: RuleCondition[];
@@ -79,7 +84,7 @@ export type RuleConfigV2 = {
 
 export type SuggestedAction = 'allow' | 'log' | 'flag_for_review' | 'filter_to_modqueue';
 
-export type ClassificationDecision = 'allowed' | 'needs_review' | 'violation' | 'uncertain';
+export type ClassificationDecision = 'allowed' | 'needs_review' | 'violation' | 'uncertain' | 'insufficient_context';
 
 export type ClassificationSource = 'deterministic' | 'llm' | 'fallback';
 
@@ -99,7 +104,15 @@ export type ClassificationResult = {
 
 export type CaseFeedback = 'correct' | 'false_positive' | 'missed_violation';
 
-export type CaseAction = 'none' | 'logged' | 'flagged' | 'filtered' | 'filter_unavailable' | 'error';
+export type CaseAction =
+  | 'none'
+  | 'logged'
+  | 'flagged'
+  | 'filtered'
+  | 'filter_unavailable'
+  | 'automod_filtered'
+  | 'skipped_automod'
+  | 'error';
 
 export type CaseRecord = {
   id: string;
@@ -174,3 +187,37 @@ export function omitUndefined<T extends Record<string, unknown>>(obj: T): T {
   }
   return result as T;
 }
+
+// ---------------------------------------------------------------------------
+// Rule Builder
+// ---------------------------------------------------------------------------
+
+export type RuleBuilderMode = 'natural_language' | 'template' | 'subreddit_rule';
+
+export type RuleBuilderTemplateId = 'sunday_memes' | 'resume_megathread' | 'survey_approval';
+
+export type SubredditRuleInput = {
+  title: string;
+  description: string;
+  kind?: 'all' | 'link' | 'comment' | undefined;
+  violationReason?: string | undefined;
+};
+
+export type RuleBuilderRequest = {
+  mode: RuleBuilderMode;
+  intent?: string | undefined;
+  templateId?: RuleBuilderTemplateId | undefined;
+  subredditRule?: SubredditRuleInput | undefined;
+  timezone: string;
+  currentRules: Array<Pick<RuleConfigV2, 'id' | 'title' | 'description'>>;
+};
+
+export type RuleBuilderResponse =
+  | {
+      status: 'needs_clarification';
+      questions: string[];
+    }
+  | {
+      status: 'draft';
+      rule: RuleConfigV2;
+    };

@@ -30,7 +30,8 @@
   },
   "triggers": {
     "onPostSubmit": "/internal/triggers/post-submit",
-    "onPostDelete": "/internal/triggers/post-delete"
+    "onPostDelete": "/internal/triggers/post-delete",
+    "onAutomoderatorFilterPost": "/internal/triggers/automod-filter-post"
   },
   "settings": {
     "global": {

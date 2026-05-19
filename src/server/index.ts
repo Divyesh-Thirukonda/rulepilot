@@ -1,25 +1,39 @@
 import { serve } from '@hono/node-server';
 import { context, createServer, getServerPort, reddit } from '@devvit/web/server';
-import type { MenuItemRequest, OnPostDeleteRequest, OnPostSubmitRequest, TriggerResponse, UiResponse } from '@devvit/web/shared';
+import type {
+  MenuItemRequest,
+  OnAutomoderatorFilterPostRequest,
+  OnPostDeleteRequest,
+  OnPostSubmitRequest,
+  TriggerResponse,
+  UiResponse,
+} from '@devvit/web/shared';
 import { Hono } from 'hono';
 import type { Context as HonoContext } from 'hono';
 
 import { generateRuleId } from '../shared/rules';
+import { isValidRedirectTarget } from '../shared/redirects';
 import type {
   CaseFeedback,
   ConditionField,
   ConditionType,
   PostType,
+  RedirectTargetType,
+  RuleBuilderRequest,
+  RuleBuilderResponse,
   RuleAction,
   RuleCategory,
   RuleCondition,
   RuleConfigV2,
+  SubredditRuleInput,
 } from '../shared/types';
+import { buildAutomoderatorCase } from './automod';
+import { draftRuleWithOpenAI } from './rule-builder';
 import { scanPost } from './classifier';
 import { enabledRulesFromList } from './policy';
 import { getOpenAiApiKey, getRulePilotSettings } from './settings';
-import { buildStats, deleteCase, getRecentCases, updateCaseFeedback } from './storage';
-import { postInputFromPost, postInputFromTrigger } from './post-input';
+import { buildStats, deleteCase, getRecentCases, saveCase, updateCaseFeedback } from './storage';
+import { postInputFromPost, postInputFromPostV2, postInputFromTrigger } from './post-input';
 import {
   deleteRule,
   exportRules,
@@ -42,11 +56,14 @@ const VALID_CONDITION_TYPES = new Set<ConditionType>(['keyword', 'regex', 'post_
 const VALID_CONDITION_FIELDS = new Set<ConditionField>(['title', 'body', 'title_and_body', 'flair', 'url']);
 const VALID_POST_TYPES = new Set<PostType>(['text', 'link', 'media', 'poll', 'crosspost']);
 const VALID_DAYS = new Set(['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']);
+const VALID_REDIRECT_TARGET_TYPES = new Set<RedirectTargetType>(['subreddit', 'megathread', 'url', 'custom']);
 const MAX_TITLE_LEN = 200;
 const MAX_DESC_LEN = 2000;
 const MAX_EXAMPLES = 20;
 const MAX_CONDITIONS = 30;
 const MAX_CONDITION_VALUE_LEN = 1000;
+const MAX_REDIRECT_TARGET_LEN = 500;
+const MAX_REDIRECT_TEMPLATE_LEN = 1200;
 
 function splitConditionValue(value: string): string[] {
   return value.split('|').map((part) => part.trim()).filter(Boolean);
@@ -195,6 +212,40 @@ function validateRuleInput(body: Partial<RuleConfigV2>): string | null {
   if (body.redirect !== undefined && typeof body.redirect !== 'string') {
     return 'Redirect guidance must be a string.';
   }
+  const hasStructuredRedirect =
+    body.redirectTargetType !== undefined || body.redirectTarget !== undefined || body.redirectTemplate !== undefined;
+  if (hasStructuredRedirect) {
+    const redirectTargetValue = typeof body.redirectTarget === 'string' ? body.redirectTarget : '';
+    const redirectTemplateValue = typeof body.redirectTemplate === 'string' ? body.redirectTemplate : '';
+    const clearsStructuredRedirect =
+      body.redirectTargetType === undefined &&
+      redirectTargetValue.trim() === '' &&
+      redirectTemplateValue.trim() === '';
+    if (clearsStructuredRedirect) {
+      // Empty strings from the Rule Studio form intentionally clear any existing structured redirect.
+    } else {
+      if (!body.redirectTargetType || !VALID_REDIRECT_TARGET_TYPES.has(body.redirectTargetType)) {
+        return `Invalid redirect target type. Must be one of: ${[...VALID_REDIRECT_TARGET_TYPES].join(', ')}.`;
+      }
+      if (typeof body.redirectTarget !== 'string') {
+        return 'Redirect target must be a string.';
+      }
+      if (body.redirectTarget.length > MAX_REDIRECT_TARGET_LEN) {
+        return `Redirect target must be ${MAX_REDIRECT_TARGET_LEN} characters or fewer.`;
+      }
+      if (!isValidRedirectTarget(body.redirectTargetType, body.redirectTarget)) {
+        return body.redirectTargetType === 'url'
+          ? 'Redirect URL must be a valid http(s) URL.'
+          : `Redirect target is not valid for ${body.redirectTargetType}.`;
+      }
+      if (typeof body.redirectTemplate !== 'string' || !body.redirectTemplate.trim()) {
+        return 'Redirect template must be a non-empty string.';
+      }
+      if (body.redirectTemplate.length > MAX_REDIRECT_TEMPLATE_LEN) {
+        return `Redirect template must be ${MAX_REDIRECT_TEMPLATE_LEN} characters or fewer.`;
+      }
+    }
+  }
   if (body.modNotes !== undefined && typeof body.modNotes !== 'string') {
     return 'Mod notes must be a string.';
   }
@@ -227,6 +278,41 @@ function sanitizeConditions(conditions: RuleCondition[]): RuleCondition[] {
   });
 }
 
+function copyRedirectFields(target: RuleConfigV2, body: Partial<RuleConfigV2>, existing?: RuleConfigV2): void {
+  const clearsStructuredRedirect =
+    body.redirectTargetType === undefined &&
+    body.redirectTarget !== undefined &&
+    body.redirectTemplate !== undefined &&
+    body.redirectTarget.trim() === '' &&
+    body.redirectTemplate.trim() === '';
+  if (clearsStructuredRedirect) {
+    delete target.redirectTargetType;
+    delete target.redirectTarget;
+    delete target.redirectTemplate;
+  } else {
+    if (body.redirectTargetType !== undefined) {
+      target.redirectTargetType = body.redirectTargetType;
+    } else if (existing?.redirectTargetType !== undefined) {
+      target.redirectTargetType = existing.redirectTargetType;
+    }
+    if (body.redirectTarget !== undefined) {
+      target.redirectTarget = body.redirectTarget.trim();
+    } else if (existing?.redirectTarget !== undefined) {
+      target.redirectTarget = existing.redirectTarget;
+    }
+    if (body.redirectTemplate !== undefined) {
+      target.redirectTemplate = body.redirectTemplate.trim();
+    } else if (existing?.redirectTemplate !== undefined) {
+      target.redirectTemplate = existing.redirectTemplate;
+    }
+  }
+  if (body.redirect !== undefined) {
+    target.redirect = body.redirect.trim();
+  } else if (existing?.redirect !== undefined) {
+    target.redirect = existing.redirect;
+  }
+}
+
 function postId(value: string): `t3_${string}` {
   return value.startsWith('t3_') ? (value as `t3_${string}`) : `t3_${value}`;
 }
@@ -239,6 +325,43 @@ function summarizeCase(record: Awaited<ReturnType<typeof scanPost>>, rules: Rule
   const rule = record.result.ruleId ? rules.find((candidate) => candidate.id === record.result.ruleId) : undefined;
   const label = rule?.title ?? 'No rule matched';
   return `${label}: ${Math.round(record.result.confidence * 100)}% (${record.action})`;
+}
+
+async function recordAutomoderatorFilteredPost(input: OnAutomoderatorFilterPostRequest): Promise<void> {
+  if (!input.post || !input.subreddit) {
+    return;
+  }
+  const postInput = postInputFromPostV2(input.post, input.subreddit.name);
+  await saveCase(buildAutomoderatorCase(postInput, input.reason));
+}
+
+function ruleBuilderRequest(body: Partial<RuleBuilderRequest>, rules: RuleConfigV2[], timezone: string): RuleBuilderRequest {
+  return {
+    mode: body.mode ?? 'natural_language',
+    intent: body.intent,
+    templateId: body.templateId,
+    subredditRule: body.subredditRule,
+    timezone,
+    currentRules: rules.map((rule) => ({
+      id: rule.id,
+      title: rule.title,
+      description: rule.description,
+    })),
+  };
+}
+
+function subredditRuleInput(rule: {
+  shortName: string;
+  description: string;
+  kind?: 'all' | 'link' | 'comment';
+  violationReason?: string;
+}): SubredditRuleInput {
+  return {
+    title: rule.shortName,
+    description: rule.description,
+    kind: rule.kind,
+    violationReason: rule.violationReason,
+  };
 }
 
 async function dependencies() {
@@ -309,6 +432,13 @@ app.post('/internal/triggers/post-delete', async (c) => {
   if (input.postId) {
     await deleteCase(postId(input.postId));
   }
+
+  return c.json<TriggerResponse>({});
+});
+
+app.post('/internal/triggers/automod-filter-post', async (c) => {
+  const input = await c.req.json<OnAutomoderatorFilterPostRequest>();
+  await recordAutomoderatorFilteredPost(input);
 
   return c.json<TriggerResponse>({});
 });
@@ -485,7 +615,7 @@ app.post('/api/rules/v2', async (c) => {
     updatedAt: now,
     source: 'custom',
   };
-  if (body.redirect !== undefined) rule.redirect = body.redirect;
+  copyRedirectFields(rule, body);
   if (body.modNotes !== undefined) rule.modNotes = body.modNotes;
   const rules = await upsertRule(subredditName, rule);
   return c.json({ rule, rules }, 201);
@@ -522,8 +652,7 @@ app.put('/api/rules/v2/:id', async (c) => {
     conditions: body.conditions ? sanitizeConditions(body.conditions) : existing.conditions,
     updatedAt: new Date().toISOString(),
   };
-  if (body.redirect !== undefined) updated.redirect = body.redirect;
-  else if (existing.redirect !== undefined) updated.redirect = existing.redirect;
+  copyRedirectFields(updated, body, existing);
   if (body.modNotes !== undefined) updated.modNotes = body.modNotes;
   else if (existing.modNotes !== undefined) updated.modNotes = existing.modNotes;
   const rules = await upsertRule(subredditName, updated);
@@ -606,9 +735,112 @@ app.post('/api/rules/v2/import', async (c) => {
     ...r,
     source: 'custom' as const,
     conditions: sanitizeConditions(r.conditions ?? []),
+    redirectTarget: r.redirectTarget?.trim(),
+    redirectTemplate: r.redirectTemplate?.trim(),
+    redirect: r.redirect?.trim(),
   }));
   const rules = await importRules(subredditName, sanitized);
   return c.json({ rules });
+});
+
+/** Generate one disabled rule draft from a prompt, template, or subreddit rule text. */
+app.post('/api/rules/v2/ai-draft', async (c) => {
+  const allowed = await requireModerator(c);
+  if (allowed !== true) {
+    return allowed;
+  }
+  const subredditName = context.subredditName ?? 'unknown';
+  const [settings, apiKey, currentRules] = await Promise.all([
+    getRulePilotSettings(),
+    getOpenAiApiKey(),
+    getSubredditRules(subredditName),
+  ]);
+  const body = (await c.req.json()) as Partial<RuleBuilderRequest>;
+  if (body.mode === 'natural_language' && !body.intent?.trim()) {
+    return c.json({ error: 'Describe the rule you want to build.' }, 400);
+  }
+  if (body.mode === 'subreddit_rule' && !body.subredditRule) {
+    return c.json({ error: 'subredditRule is required for subreddit rule drafting.' }, 400);
+  }
+  if (body.mode === 'template' && !body.templateId) {
+    return c.json({ error: 'templateId is required for template drafting.' }, 400);
+  }
+  if (body.mode !== 'template' && !apiKey) {
+    return c.json({ error: 'OpenAI API key is required for AI Builder drafts.' }, 400);
+  }
+
+  let draft: RuleBuilderResponse;
+  try {
+    draft = await draftRuleWithOpenAI({
+      request: ruleBuilderRequest(body, currentRules, settings.timezone),
+      apiKey: apiKey ?? '',
+      model: settings.openAiModel,
+    });
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : String(error) }, 502);
+  }
+
+  if (draft.status === 'draft') {
+    const validationError = validateRuleInput(draft.rule);
+    if (validationError) {
+      return c.json({ error: `Generated draft was invalid: ${validationError}` }, 502);
+    }
+  }
+  return c.json(draft);
+});
+
+/** Draft disabled RulePilot rules from the current subreddit's written rules. */
+app.post('/api/rules/v2/import-subreddit-rules', async (c) => {
+  const allowed = await requireModerator(c);
+  if (allowed !== true) {
+    return allowed;
+  }
+  const subredditName = context.subredditName;
+  if (!subredditName) {
+    return c.json({ error: 'Subreddit context is unavailable.' }, 400);
+  }
+  const [settings, apiKey, currentRules] = await Promise.all([
+    getRulePilotSettings(),
+    getOpenAiApiKey(),
+    getSubredditRules(subredditName),
+  ]);
+  if (!apiKey) {
+    return c.json({ error: 'OpenAI API key is required to import subreddit rules.' }, 400);
+  }
+
+  try {
+    const subreddit = await reddit.getSubredditByName(subredditName);
+    const subredditRules = await subreddit.getRules();
+    const drafts: RuleConfigV2[] = [];
+    const errors: string[] = [];
+    for (const rule of subredditRules.slice(0, 10)) {
+      const response = await draftRuleWithOpenAI({
+        request: ruleBuilderRequest({
+          mode: 'subreddit_rule',
+          subredditRule: subredditRuleInput(rule),
+        }, currentRules, settings.timezone),
+        apiKey,
+        model: settings.openAiModel,
+      });
+      if (response.status === 'draft') {
+        const validationError = validateRuleInput(response.rule);
+        if (validationError) {
+          errors.push(`${rule.shortName}: ${validationError}`);
+        } else {
+          drafts.push(response.rule);
+        }
+      } else {
+        errors.push(`${rule.shortName}: ${response.questions.join(' ') || 'Needs clarification'}`);
+      }
+    }
+    return c.json({
+      drafts,
+      importedCount: subredditRules.length,
+      errors,
+    });
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : String(error) }, 502);
+  }
 });
 
 // ---------------------------------------------------------------------------

@@ -20,6 +20,8 @@ RulePilot does not collect or process author history, private profile data, subs
 
 If a moderator enables LLM classification and the app developer configures an OpenAI API key, RulePilot may send the post title, body excerpt, flair text, URL domain, and configured rule text to OpenAI for structured classification.
 
+If a moderator uses RulePilot AI Builder, RulePilot may send the moderator-provided rule description or subreddit rule text plus existing RulePilot rule titles/descriptions to OpenAI to generate a disabled draft rule for moderator review.
+
 RulePilot does not use Reddit data to train, fine-tune, or improve AI models. RulePilot is configured for moderation triage only.
 
 ## Storage

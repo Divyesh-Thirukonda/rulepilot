@@ -16,7 +16,11 @@ export function enabledRules(settings: RulePilotSettings): RuleConfigV2[] {
 }
 
 export function shouldAct(result: ClassificationResult, settings: RulePilotSettings, rules: RuleConfigV2[]): boolean {
-  if (result.suggestedAction === 'allow' || result.decision === 'allowed') {
+  if (
+    result.suggestedAction === 'allow' ||
+    result.decision === 'allowed' ||
+    result.decision === 'insufficient_context'
+  ) {
     return false;
   }
   const ruleThreshold = rules.find((rule) => rule.id === result.ruleId)?.threshold ?? settings.confidenceThreshold;

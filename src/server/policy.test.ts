@@ -50,4 +50,18 @@ describe('policy', () => {
       )
     ).toBe(false);
   });
+
+  it('does not act on insufficient context decisions', () => {
+    expect(
+      shouldAct(
+        {
+          ...result(0.99),
+          decision: 'insufficient_context',
+          suggestedAction: 'log',
+        },
+        settings,
+        enabledRules(settings)
+      )
+    ).toBe(false);
+  });
 });

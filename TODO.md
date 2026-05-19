@@ -1,6 +1,6 @@
 # RulePilot TODO
 
-Last updated: 2026-05-18
+Note: Whenever more things need to be added to the todo like when you discover new work, update the todo by adding it as a child under the relevent parent item (phase, feature, task, or subtask)
 
 [x] = done 
 [ ] = pending
@@ -113,22 +113,22 @@ Think like we're basically giving them conditions (datetime = sunday [from datet
 
 ## P1: Better LLM Classification
 
-- !!! [ ] Improve the OpenAI prompt to be more conservative and rubric-based.
-- !!! [ ] Enrich the structured feature payload sent to the LLM (currently `postForModel` only sends title, body, flair, urlDomain):
-  - [ ] title / body excerpt (keywords / regex);
-  - [ ] flair text;
-  - [ ] URL domain;
-  - [ ] post kind (text, link, media, poll, crosspost);
-  - [ ] created weekday and local time using the subreddit timezone setting;
-  - [ ] enabled rules only;
-  - [ ] body/title quality indicators when available (length, presence of links, presence of media, question-mark heuristic).
-- !!! [ ] Ask the LLM for evidence spans or short evidence bullets, not just a generic rationale.
-- !!! [ ] Add an explicit `insufficient_context` outcome.
-- !!! [ ] Add rule-specific confidence calibration:
-  - [ ] memes can be high-confidence from signals;
-  - [ ] out-of-scope should require strong evidence;
-  - [ ] low-quality should default to needs-review;
-  - [ ] AI/LLM policy should classify policy topic, not AI-authorship.
+- !!! [x] Improve the OpenAI prompt to be more conservative and rubric-based.
+- !!! [x] Enrich the structured feature payload sent to the LLM:
+  - [x] title / body excerpt;
+  - [x] flair text;
+  - [x] URL domain;
+  - [x] post kind (text, link, media, poll, crosspost);
+  - [x] created weekday and local time using the subreddit timezone setting;
+  - [x] enabled rules only;
+  - [x] body/title quality indicators when available (length, presence of links, presence of media, question-mark heuristic).
+- !!! [x] Ask the LLM for evidence spans or short evidence bullets, not just a generic rationale.
+- !!! [x] Add an explicit `insufficient_context` outcome.
+- !!! [x] Add rule-specific confidence calibration:
+  - [x] memes can be high-confidence from signals;
+  - [x] out-of-scope should require strong evidence;
+  - [x] low-quality should default to needs-review;
+  - [x] AI/LLM policy should classify policy topic, not AI-authorship.
 - ... [ ] Add a circuit breaker:
   - [ ] disable LLM calls after repeated failures;
   - [ ] fall back to deterministic-only mode;
@@ -137,59 +137,63 @@ Think like we're basically giving them conditions (datetime = sunday [from datet
 
 ## P1: Rerouting Instead Of Removal
 
-- !!! [ ] Add first-class routing actions:
-  - [ ] no action;
-  - [ ] log only;
-  - [ ] flag/report for review;
-  - [ ] filter to mod queue;
-  - [ ] suggest redirect;
-  - [ ] suggest megathread;
-  - [ ] suggest removal reason;
-  - [ ] escalate to mod with suggested temporary ban (X hours/days) — mod must confirm before any account action is taken.
-- !!! [ ] Add redirect templates:
-  - [ ] "Please post this in r/cscareerquestions";
-  - [ ] "Please use the resume sticky";
-  - [ ] "Please use the weekly questions thread";
-  - [ ] "Please use r/college for general college questions";
-  - [ ] custom subreddit or wiki URL.
-- !!! [ ] One of the rerouting options should be to move posts to a megathread, if the subreddit has a megathread posted for that particular topic.
-but with the rule fixed.
-- !!! [ ] Add a "Copy redirect" or "Create mod-reviewed redirect draft" action.
-- !!! [ ] Add a "Create draft to r/X" button: when a post is rerouted, send the user a message with a pre-filled draft link so they can easily repost to the suggested subreddit instead of just being told "post elsewhere" (like how it says please post to r/X instead and a create draft button can be messaged to the user in that case).
-- !!! [ ] Avoid automated unsolicited DMs. Prefer moderator-confirmed comments, removal reasons, or dashboard copy.
-- !!! [ ] Keep account actions out of the MVP. For spammer rules, show "escalate to mod" or "suggest temporary ban (X hours/days)" only after explicit moderator confirmation and only if Devvit API support and policy review are clear.
-- ... [ ] If the rule the author violated is fixable, allow the mod to create a new post for the user with the same content as the original but with the rule fixed (maybe the edited post can just be sent back to the user as a draft for them ready to be posted, they can choose to edit it further if needed). For example, if a user posts a meme on a weekday, the mod can send the user a DM with the meme as a draft with instructions to post on a weekend post instead (or it could be a draft and instead of instructions, we have it scheduled for the weekend automatically, but again the user might not understand why it's scheduled for the weekend so maybe an instruction note would be needed in the dm).
+- !!! [x] Add first-class routing actions:
+  - [x] no action;
+  - [x] log only;
+  - [x] flag/report for review;
+  - [x] filter to mod queue;
+- !!! [x] Add redirect metadata to rules without making it an automatic messaging/removal system:
+  - [x] `redirectTargetType`: subreddit, megathread, URL, or custom;
+  - [x] `redirectTarget`: subreddit name, manually configured megathread, URL, or custom label;
+  - [x] `redirectTemplate`: moderator-facing guidance text;
+  - [x] legacy `redirect` still falls back as guidance when structured fields are missing.
+- !!! [x] Add redirect templates:
+  - [x] "Please post this in r/cscareerquestions";
+  - [x] "Please use the resume sticky";
+  - [x] "Please use the weekly questions thread";
+  - [x] "Please use r/college for general college questions";
+  - [x] custom subreddit or wiki URL.
+- !!! [x] Move to megathread: One of the rerouting options should be to move posts to a megathread, if the subreddit has a megathread posted for that particular topic.
+  - [x] MVP uses manually configured megathread title or URL; no automatic sticky discovery.
+- !!! [x] Move to different subreddit: Add a "Create draft to r/X" button: when a post is rerouted, send the user a message with a pre-filled draft link so they can easily repost to the suggested subreddit instead of just being told "post elsewhere" (like how it says please post to r/X instead and a create draft button can be messaged to the user in that case).
+  - [x] MVP opens a moderator-facing Reddit submit URL only; it does not send the author a DM.
+- !!! [x] Avoid automated unsolicited DMs. Prefer moderator-confirmed comments, removal reasons, or dashboard copy.
+  - [x] Dashboard shows copy/open/draft controls only after a case matches a redirect-configured rule.
+- !!! [ ] Escalate to ban: Escalate to mod with suggested temporary ban (12 hours by default, duration editable by mod) — mod must confirm before any account action is taken.
+- !!! [ ] Keep account actions out of the MVP. For spammer rules, show "escalate to mod" / "suggest temporary ban (X hours/days)" only after explicit moderator confirmation and only if Devvit API support and policy review are clear.
+- !!! [ ] If the rule the author violated is fixable, allow the mod to create a new post for the user with the same content as the original but with the rule fixed (maybe the edited post can just be sent back to the user as a draft for them ready to be posted, they can choose to edit it further if needed). For example, if a user posts a meme on a weekday, the mod can send the user a DM with the meme as a draft with instructions to post on a weekend post instead (or it could be a draft and instead of instructions, we have it scheduled for the weekend automatically, but again the user might not understand why it's scheduled for the weekend so maybe an instruction note would be needed in the dm). Plan this out, and idek if this is a featue in the devvit so figure that out too.
 
 
 ## P1: AI-Assisted Rule Builder
 
-- !!! [ ] Build `RulePilot AI Builder`, a mod-facing assistant for drafting rules (cuz at the end of the day, we dont wanna develop the rules FOR the mods, that's what they'll be doing perhaps with the help of an ai to help them develop a rule themselves, so we need a way for mods to develop these rules).
-- !!! [ ] Treat the builder as a tool-oriented workflow:
-  - [ ] parse moderator intent;
-  - [ ] ask clarifying questions when the rule is ambiguous;
-  - [ ] generate a draft `RuleConfigV2`;
-  - [ ] generate deterministic conditions where possible;
-  - [ ] generate the LLM rubric only for ambiguous parts;
-  - [ ] generate positive and negative test cases;
-  - [ ] simulate the draft against examples;
-  - [ ] save as a disabled draft until a mod enables it.
-- !!! [ ] Consider an MCP-esque internal architecture for local development if it helps, but do not add platform complexity unless it clearly improves the product.
-- !!! [ ] Button to auto-import all written rules from in the subreddit rule section and auto-populate the rules for no rules exist in studio (like they're yet to be imported) and of course some rules may not exist, for which an llm prompt will be generated to generate the rules based on the subreddit's content and the moderator's intent.
-- !.. [ ] Add one-click and natural language rule creation flows:
-  - [ ] "Only allow memes on Sundays";
-  - [ ] "Route resume posts to a megathread";
-  - [ ] "Require approval for surveys";
+- !!! [x] Build `RulePilot AI Builder`, a mod-facing assistant for drafting rules (cuz at the end of the day, we dont wanna develop the rules FOR the mods, that's what they'll be doing perhaps with the help of an ai to help them develop a rule themselves, so we need a way for mods to develop these rules).
+- !!! [x] Treat the builder as a tool-oriented workflow:
+  - [x] parse moderator intent;
+  - [x] ask clarifying questions when the rule is ambiguous;
+  - [x] generate a draft `RuleConfigV2`;
+  - [x] generate deterministic conditions where possible;
+  - [x] generate the LLM rubric only for ambiguous parts;
+  - [x] generate positive and negative test cases;
+  - [x] simulate the draft against examples;
+  - [x] save as a disabled draft until a mod enables it.
+- !!! [x] Consider an MCP-esque internal architecture for local development if it helps, but do not add platform complexity unless it clearly improves the product.
+  - [x] Chose ordinary server helpers and one structured OpenAI call; no MCP-style runtime added for the hackathon MVP.
+- !!! [x] Button to auto-import all written rules from in the subreddit rule section and auto-populate the rules for no rules exist in studio (like they're yet to be imported) and of course some rules may not exist, for which an llm prompt will be generated to generate the rules based on the subreddit's content and the moderator's intent.
+- !.. [x] Add one-click and natural language rule creation flows:
+  - [x] "Only allow memes on Sundays";
+  - [x] "Route resume posts to a megathread";
+  - [x] "Require approval for surveys";
   - [ ] "Flag hiring/referral posts";
   - [ ] "Flag live interview or OA question sharing";
   - [ ] "Route laptop buying advice elsewhere";
   - [ ] "Flag Amazon-specific posts";
   - [ ] "Flag custom restricted topic".
-- ... [ ] Add validation so AI-generated rules cannot:
-  - [ ] inspect author history;
-  - [ ] call unapproved external services;
-  - [ ] schedule broad crawls;
-  - [ ] auto-ban users;
-  - [ ] claim reliable AI-generated-text detection.
+- ... [x] Add validation so AI-generated rules cannot:
+  - [x] inspect author history;
+  - [x] call unapproved external services;
+  - [x] schedule broad crawls;
+  - [x] auto-ban users;
+  - [x] claim reliable AI-generated-text detection.
 
 ## P1: Common Rule Library
 
@@ -219,13 +223,13 @@ but with the rule fixed.
 
 ## P1: Working With Existing Reddit Mod Tooling
 
-- !!! [ ] Add a "RulePilot did nothing because AutoModerator already acted" status when detectable.
-- !!! [ ] Add documentation explaining how RulePilot should be layered with subreddit rules, AutoModerator, removal reasons, and mod queue.
+- !!! [x] Add a "RulePilot did nothing because AutoModerator already acted" status when detectable.
+- !!! [x] Add documentation explaining how RulePilot should be layered with subreddit rules, AutoModerator, removal reasons, and mod queue.
 - ... [ ] Add an AutoModerator-compatible mindset:
   - [ ] deterministic rules first;
   - [ ] semantic triage only when regex/keywords are insufficient;
   - [ ] show when a rule could be better handled by AutoModerator.
-- ... [ ] Consider listening to `onAutomoderatorFilterPost` only to annotate or measure cases that AutoModerator already filtered, not to duplicate its work.
+- ... [x] Consider listening to `onAutomoderatorFilterPost` only to annotate or measure cases that AutoModerator already filtered, not to duplicate its work.
 - ... [ ] Consider `onModAction` only for posts RulePilot touched, so the app can learn aggregate outcomes without broad modlog mining.
 
 ## P2: Evaluation And Reliability

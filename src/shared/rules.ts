@@ -18,6 +18,9 @@ export const CS_MAJORS_PRESET: RuleConfigV2[] = [
     action: 'filter',
     threshold: 0.78,
     category: 'scope',
+    redirectTargetType: 'subreddit',
+    redirectTarget: 'r/cscareerquestions',
+    redirectTemplate: 'This looks mostly like career or job advice. Consider directing the author to r/cscareerquestions.',
     redirect: 'Try r/college for general university questions or r/cscareerquestions for career-first questions.',
     enabled: true,
     conditions: [
@@ -64,6 +67,9 @@ export const CS_MAJORS_PRESET: RuleConfigV2[] = [
     action: 'filter',
     threshold: 0.72,
     category: 'format',
+    redirectTargetType: 'subreddit',
+    redirectTarget: 'r/ProgrammerHumor',
+    redirectTemplate: 'Memes and low-context humor usually belong in r/ProgrammerHumor unless this subreddit allows them today.',
     redirect: 'Use r/ProgrammerHumor unless it is Sunday or the mods have approved the post.',
     enabled: true,
     conditions: [
@@ -85,6 +91,9 @@ export const CS_MAJORS_PRESET: RuleConfigV2[] = [
     action: 'filter',
     threshold: 0.76,
     category: 'promotion',
+    redirectTargetType: 'custom',
+    redirectTarget: 'Mod approval',
+    redirectTemplate: 'AMAs, surveys, hiring posts, and referral posts need prior moderator approval before they go live.',
     redirect: 'Ask the moderators for approval before posting AMAs, surveys, hiring requests, or referrals.',
     enabled: true,
     conditions: [
@@ -103,6 +112,9 @@ export const CS_MAJORS_PRESET: RuleConfigV2[] = [
     action: 'filter',
     threshold: 0.7,
     category: 'megathread',
+    redirectTargetType: 'megathread',
+    redirectTarget: 'Resume sticky',
+    redirectTemplate: 'Resume reviews belong in the resume sticky thread. If the current sticky has a URL, paste it into this rule before using Open target.',
     redirect: 'Post in the resume sticky thread or try r/EngineeringResumes.',
     enabled: true,
     conditions: [
@@ -122,6 +134,9 @@ export const CS_MAJORS_PRESET: RuleConfigV2[] = [
     action: 'log',
     threshold: 0.8,
     category: 'megathread',
+    redirectTargetType: 'megathread',
+    redirectTarget: 'Amazon megathread',
+    redirectTemplate: 'Amazon-specific recruiting questions are repetitive. Consider directing the author to the Amazon megathread.',
     redirect: 'Consider the Amazon megathread for repetitive Amazon-specific questions.',
     enabled: true,
     conditions: [
@@ -233,6 +248,9 @@ export const CS_MAJORS_PRESET: RuleConfigV2[] = [
     action: 'filter',
     threshold: 0.7,
     category: 'format',
+    redirectTargetType: 'subreddit',
+    redirectTarget: 'r/college',
+    redirectTemplate: 'College comparison questions are outside this community by default. Consider directing the author to r/college or an admissions-specific thread.',
     enabled: true,
     conditions: [
       { type: 'keyword', field: 'title_and_body', value: 'vs\\.?|versus|between|choose|which school|which college|which university|which program' },
@@ -251,6 +269,9 @@ export const CS_MAJORS_PRESET: RuleConfigV2[] = [
     action: 'filter',
     threshold: 0.7,
     category: 'scope',
+    redirectTargetType: 'subreddit',
+    redirectTarget: 'r/SuggestALaptop',
+    redirectTemplate: 'Laptop buying advice usually belongs in r/SuggestALaptop or r/laptops.',
     redirect: 'Try r/SuggestALaptop or r/laptops.',
     enabled: true,
     conditions: [
@@ -288,6 +309,9 @@ export const CS_MAJORS_PRESET: RuleConfigV2[] = [
     action: 'filter',
     threshold: 0.72,
     category: 'megathread',
+    redirectTargetType: 'megathread',
+    redirectTarget: 'Project showcase megathread',
+    redirectTemplate: 'Personal project showcases belong in the project showcase megathread unless moderators approve a standalone post.',
     redirect: 'Use the project showcase megathread or modmail if the project deserves its own thread.',
     enabled: true,
     conditions: [

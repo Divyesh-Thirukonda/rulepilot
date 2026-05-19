@@ -87,6 +87,8 @@ export function buildStats(cases: CaseRecord[], rules?: RuleConfigV2[]): Dashboa
     flagged: 0,
     filtered: 0,
     filter_unavailable: 0,
+    automod_filtered: 0,
+    skipped_automod: 0,
     error: 0,
   };
   const ruleCounts = new Map<string, number>();

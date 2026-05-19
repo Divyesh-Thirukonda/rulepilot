@@ -4,9 +4,11 @@ import { createRoot } from 'react-dom/client';
 
 import type {
   CaseFeedback, CaseRecord, ConditionField, ConditionType, DashboardStats,
-  DashboardTab, PostType, RuleAction, RuleCategory, RuleCondition, RuleConfigV2,
-  RulePilotSettings,
+  DashboardTab, PostType, RedirectTargetType, RuleAction, RuleCategory, RuleCondition, RuleConfigV2,
+  RuleBuilderResponse, RuleBuilderTemplateId, RulePilotSettings,
 } from '../shared/types';
+import { ROUTING_ACTIONS, routingActionDefinition, routingActionLabel, routingActionStatusClass } from '../shared/actions';
+import { createSubredditDraftUrl, redirectForRule, redirectTargetUrl } from '../shared/redirects';
 import './styles.css';
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -40,7 +42,8 @@ type SimulatorConditionResult = {
 
 const actionLabels: Record<CaseRecord['action'], string> = {
   none: 'None', logged: 'Logged', flagged: 'Flagged', filtered: 'Filtered',
-  filter_unavailable: 'Filter unavailable', error: 'Error',
+  filter_unavailable: 'Filter unavailable', automod_filtered: 'AutoModerator acted',
+  skipped_automod: 'Skipped: AutoModerator', error: 'Error',
 };
 const feedbackLabels: Record<CaseFeedback, string> = {
   correct: 'Correct', false_positive: 'False positive', missed_violation: 'Missed violation',
@@ -54,12 +57,77 @@ const categoryLabels: Record<RuleCategory, string> = {
   scope: 'Scope', civility: 'Civility', format: 'Format', quality: 'Quality',
   repetition: 'Repetition', promotion: 'Promotion', sensitive: 'Sensitive', megathread: 'Megathread',
 };
-const actionOptions: { value: RuleAction; label: string }[] = [
-  { value: 'allow', label: 'Allow' }, { value: 'log', label: 'Log only' },
-  { value: 'flag', label: 'Flag for review' }, { value: 'filter', label: 'Filter to mod queue' },
-];
 const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const POST_TYPES: PostType[] = ['text', 'link', 'media', 'poll', 'crosspost'];
+const BUILDER_TEMPLATES: Array<{ id: RuleBuilderTemplateId; label: string; description: string }> = [
+  {
+    id: 'sunday_memes',
+    label: 'Only allow memes on Sundays',
+    description: 'Drafts weekday meme routing with a Sunday exception.',
+  },
+  {
+    id: 'resume_megathread',
+    label: 'Route resume posts to a megathread',
+    description: 'Drafts resume review detection and sticky guidance.',
+  },
+  {
+    id: 'survey_approval',
+    label: 'Require approval for surveys',
+    description: 'Drafts survey and research-recruitment approval routing.',
+  },
+];
+const REDIRECT_TARGET_TYPES: RedirectTargetType[] = ['subreddit', 'megathread', 'url', 'custom'];
+const REDIRECT_PRESETS = [
+  {
+    id: 'none',
+    label: 'No redirect guidance',
+    redirectTargetType: undefined,
+    redirectTarget: '',
+    redirectTemplate: '',
+  },
+  {
+    id: 'cscareerquestions',
+    label: 'Please post this in r/cscareerquestions',
+    redirectTargetType: 'subreddit' as const,
+    redirectTarget: 'r/cscareerquestions',
+    redirectTemplate: 'This looks mostly like career or job advice. Please post this in r/cscareerquestions instead.',
+  },
+  {
+    id: 'resume-sticky',
+    label: 'Please use the resume sticky',
+    redirectTargetType: 'megathread' as const,
+    redirectTarget: 'Resume sticky',
+    redirectTemplate: 'Please use the resume sticky thread for resume reviews.',
+  },
+  {
+    id: 'weekly-questions',
+    label: 'Please use the weekly questions thread',
+    redirectTargetType: 'megathread' as const,
+    redirectTarget: 'Weekly questions thread',
+    redirectTemplate: 'Please use the weekly questions thread for this kind of question.',
+  },
+  {
+    id: 'college',
+    label: 'Please use r/college',
+    redirectTargetType: 'subreddit' as const,
+    redirectTarget: 'r/college',
+    redirectTemplate: 'This looks like a general college question. Please use r/college instead.',
+  },
+  {
+    id: 'custom-subreddit',
+    label: 'Custom subreddit',
+    redirectTargetType: 'subreddit' as const,
+    redirectTarget: 'r/',
+    redirectTemplate: 'Please post this in the suggested subreddit instead.',
+  },
+  {
+    id: 'custom-url',
+    label: 'Custom URL or wiki',
+    redirectTargetType: 'url' as const,
+    redirectTarget: 'https://',
+    redirectTemplate: 'Please use the linked resource for this topic.',
+  },
+];
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -257,6 +325,45 @@ function ruleTitle(rules: RuleConfigV2[], ruleId: string | null): string {
   return ruleId ? (rules.find((r) => r.id === ruleId)?.title ?? ruleId) : 'No rule';
 }
 
+function RoutingPanel({ item, rule }: { item: CaseRecord; rule: RuleConfigV2 | undefined }) {
+  const redirect = redirectForRule(rule);
+  const [copied, setCopied] = useState(false);
+  if (!redirect) return null;
+  const href = item.postPermalink ? new URL(item.postPermalink, 'https://www.reddit.com').toString() : undefined;
+  const targetUrl = redirectTargetUrl(redirect);
+  const draftUrl = createSubredditDraftUrl({
+    redirect,
+    postTitle: item.postTitle,
+    postPermalink: href,
+  });
+  const copyGuidance = async () => {
+    try {
+      await navigator.clipboard.writeText(redirect.template);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      window.prompt('Copy routing guidance', redirect.template);
+    }
+  };
+  return (
+    <section className="detail-section routing-panel">
+      <div className="routing-heading">
+        <div>
+          <h3>Routing guidance</h3>
+          <span>{redirect.legacy ? 'Legacy guidance' : redirect.targetType}</span>
+        </div>
+        <strong>{redirect.target}</strong>
+      </div>
+      <p>{redirect.template}</p>
+      <div className="routing-actions">
+        <button className="secondary-button" type="button" onClick={() => void copyGuidance()}>{copied ? 'Copied' : 'Copy guidance'}</button>
+        {targetUrl ? <a className="secondary-button link-button" href={targetUrl} rel="noreferrer" target="_blank">Open target</a> : null}
+        {draftUrl ? <a className="secondary-button link-button" href={draftUrl} rel="noreferrer" target="_blank">Create draft to {redirect.target}</a> : null}
+      </div>
+    </section>
+  );
+}
+
 function CaseTable({ cases, rules, selectedId, onSelect }: { cases: CaseRecord[]; rules: RuleConfigV2[]; selectedId: string | null; onSelect: (id: string) => void }) {
   const selectedIndex = Math.max(0, cases.findIndex((item) => item.id === selectedId));
   const focusRow = (index: number) => {
@@ -323,6 +430,7 @@ function CaseDetail({ item, rules, onSaved }: { item: CaseRecord | undefined; ru
   if (!item) return <aside className="detail-panel empty-detail" aria-label="Case detail"><strong>No cases selected</strong><span>New scans will appear here after RulePilot reviews posts.</span></aside>;
   const href = item.postPermalink ? new URL(item.postPermalink, 'https://www.reddit.com').toString() : undefined;
   const signals = item.result.matchedSignals.length ? item.result.matchedSignals : ['No deterministic signal recorded'];
+  const matchedRule = item.result.ruleId ? rules.find((rule) => rule.id === item.result.ruleId) : undefined;
   return (
     <aside className="detail-panel" aria-label="Case detail">
       <div className="detail-header"><span className={`status-pill action-${item.action}`}>{actionLabels[item.action]}</span><span className={`feedback-pill ${item.feedback ? `feedback-${item.feedback}` : 'feedback-pending'}`}>{item.feedback ? feedbackLabels[item.feedback] : 'Pending'}</span></div>
@@ -330,6 +438,7 @@ function CaseDetail({ item, rules, onSaved }: { item: CaseRecord | undefined; ru
       <div className="detail-meta"><span>{ruleTitle(rules, item.result.ruleId)}</span><span>{pct(item.result.confidence)}</span><span>{formatTime(item.updatedAt)}</span></div>
       <section className="detail-section"><h3>Rationale</h3><p>{item.result.rationale}</p></section>
       <section className="detail-section"><h3>Signals</h3><ul>{signals.map((s) => <li key={s}>{s}</li>)}</ul></section>
+      <RoutingPanel item={item} rule={matchedRule} />
       <section className="detail-section"><h3>Review</h3><div className="detail-actions"><FeedbackButton postId={item.postId} feedback="correct" onSaved={onSaved}>Correct</FeedbackButton><FeedbackButton postId={item.postId} feedback="false_positive" onSaved={onSaved}>False positive</FeedbackButton></div>{item.actionError ? <p className="error-note">{item.actionError}</p> : null}</section>
       {href ? <a className="post-link" href={href} rel="noreferrer" target="_blank">Open post</a> : null}
     </aside>
@@ -470,16 +579,96 @@ function RuleSimulator({ rule, timezone }: { rule: Partial<RuleConfigV2>; timezo
   );
 }
 
+function redirectTargetPlaceholder(targetType: RedirectTargetType | undefined): string {
+  switch (targetType) {
+    case 'subreddit':
+      return 'r/cscareerquestions';
+    case 'megathread':
+      return 'Megathread title or https://www.reddit.com/r/.../comments/...';
+    case 'url':
+      return 'https://www.reddit.com/r/example/wiki/resource';
+    case 'custom':
+      return 'Moderator-facing target label';
+    default:
+      return 'No target configured';
+  }
+}
+
+function RedirectEditor({ form, setForm }: { form: Partial<RuleConfigV2>; setForm: (rule: Partial<RuleConfigV2>) => void }) {
+  const currentType = form.redirectTargetType;
+  const target = form.redirectTarget ?? '';
+  const template = form.redirectTemplate ?? form.redirect ?? '';
+  const applyPreset = (presetId: string) => {
+    const preset = REDIRECT_PRESETS.find((item) => item.id === presetId);
+    if (!preset) return;
+    setForm({
+      ...form,
+      redirectTargetType: preset.redirectTargetType,
+      redirectTarget: preset.redirectTarget,
+      redirectTemplate: preset.redirectTemplate,
+      redirect: preset.redirectTemplate,
+    });
+  };
+  return (
+    <section className="redirect-editor">
+      <div className="redirect-editor-heading">
+        <div>
+          <h3>Redirect guidance</h3>
+          <span>Shown to moderators after this rule matches. RulePilot will not DM, comment, or repost automatically.</span>
+        </div>
+      </div>
+      <div className="redirect-preset-row">
+        <label className="editor-field">
+          <span>Preset</span>
+          <select defaultValue="" onChange={(e) => applyPreset(e.target.value)}>
+            <option value="" disabled>Choose a template</option>
+            {REDIRECT_PRESETS.map((preset) => <option key={preset.id} value={preset.id}>{preset.label}</option>)}
+          </select>
+        </label>
+        <label className="editor-field">
+          <span>Target type</span>
+          <select
+            value={currentType ?? ''}
+            onChange={(e) => setForm({ ...form, redirectTargetType: e.target.value ? e.target.value as RedirectTargetType : undefined })}
+          >
+            <option value="">None</option>
+            {REDIRECT_TARGET_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
+          </select>
+        </label>
+        <label className="editor-field">
+          <span>Target</span>
+          <input
+            type="text"
+            value={target}
+            onChange={(e) => setForm({ ...form, redirectTarget: e.target.value })}
+            placeholder={redirectTargetPlaceholder(currentType)}
+          />
+        </label>
+      </div>
+      <label className="editor-field full">
+        <span>Template</span>
+        <textarea
+          rows={3}
+          value={template}
+          onChange={(e) => setForm({ ...form, redirectTemplate: e.target.value, redirect: e.target.value })}
+          placeholder="Moderator-facing guidance to copy into a removal reason, comment, or mod note."
+        />
+      </label>
+    </section>
+  );
+}
+
 function RuleEditor({ initial, onSave, onCancel, saving, timezone }: { initial: Partial<RuleConfigV2>; onSave: (r: Partial<RuleConfigV2>) => void; onCancel: () => void; saving: boolean; timezone: string }) {
   const [form, setForm] = useState<Partial<RuleConfigV2>>({ ...initial });
   const conditions = form.conditions ?? [];
   const setConditions = (c: RuleCondition[]) => setForm({ ...form, conditions: c });
+  const selectedRoutingAction = routingActionDefinition(form.action ?? 'flag');
   return (
     <div className="rule-editor">
       <div className="editor-grid">
         <label className="editor-field"><span>Title</span><input type="text" value={form.title ?? ''} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Rule title" /></label>
         <label className="editor-field"><span>Category</span><select value={form.category ?? 'quality'} onChange={(e) => setForm({ ...form, category: e.target.value as RuleCategory })}>{(Object.keys(categoryLabels) as RuleCategory[]).map((c) => <option key={c} value={c}>{categoryLabels[c]}</option>)}</select></label>
-        <label className="editor-field"><span>Action</span><select value={form.action ?? 'flag'} onChange={(e) => setForm({ ...form, action: e.target.value as RuleAction })}>{actionOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select></label>
+        <label className="editor-field"><span>Routing action</span><select value={form.action ?? 'flag'} onChange={(e) => setForm({ ...form, action: e.target.value as RuleAction })}>{ROUTING_ACTIONS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}</select><small>{selectedRoutingAction.description}</small></label>
         <label className="editor-field"><span>Threshold</span><input type="number" step="0.01" min="0.01" max="0.99" value={form.threshold ?? 0.76} onChange={(e) => setForm({ ...form, threshold: Number(e.target.value) })} /></label>
       </div>
       <label className="editor-field full"><span>Description</span><textarea rows={2} value={form.description ?? ''} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Plain-English description of what this rule catches" /></label>
@@ -491,13 +680,117 @@ function RuleEditor({ initial, onSave, onCancel, saving, timezone }: { initial: 
         <button className="secondary-button add-condition-btn" type="button" onClick={() => setConditions([...conditions, emptyCondition()])}>+ Add condition</button>
       </div>
       <RuleSimulator rule={form} timezone={timezone} />
-      <label className="editor-field full"><span>Redirect guidance</span><input type="text" value={form.redirect ?? ''} onChange={(e) => setForm({ ...form, redirect: e.target.value })} placeholder="e.g. Try r/cscareerquestions for career questions" /></label>
+      <RedirectEditor form={form} setForm={setForm} />
       <label className="editor-field full"><span>Mod notes (internal)</span><textarea rows={2} value={form.modNotes ?? ''} onChange={(e) => setForm({ ...form, modNotes: e.target.value })} placeholder="Internal notes only visible to moderators" /></label>
       <div className="editor-actions">
         <button className="primary-button" disabled={saving || !form.title?.trim()} onClick={() => onSave(form)}>{saving ? 'Saving…' : (initial.id ? 'Save changes' : 'Create rule')}</button>
         <button className="secondary-button" onClick={onCancel}>Cancel</button>
       </div>
     </div>
+  );
+}
+
+function RuleBuilder({ onDraft, onDrafts }: { onDraft: (rule: RuleConfigV2) => void; onDrafts: (rules: RuleConfigV2[]) => void }) {
+  const [intent, setIntent] = useState('');
+  const [loading, setLoading] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [questions, setQuestions] = useState<string[]>([]);
+
+  const handleBuilderResponse = async (response: Response): Promise<RuleBuilderResponse> => {
+    const body = await response.json().catch(() => undefined) as (RuleBuilderResponse & ErrorResponse) | undefined;
+    if (!response.ok) {
+      throw new Error(body?.error ?? `Rule Builder failed (${response.status})`);
+    }
+    if (!body) {
+      throw new Error('Rule Builder returned an empty response.');
+    }
+    return body;
+  };
+
+  const draftFromBody = async (label: string, body: unknown) => {
+    setLoading(label);
+    setError(null);
+    setQuestions([]);
+    try {
+      const response = await fetch('/api/rules/v2/ai-draft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const result = await handleBuilderResponse(response);
+      if (result.status === 'needs_clarification') {
+        setQuestions(result.questions);
+      } else {
+        onDraft(result.rule);
+        setIntent('');
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  const importSubredditRules = async () => {
+    setLoading('import');
+    setError(null);
+    setQuestions([]);
+    try {
+      const response = await fetch('/api/rules/v2/import-subreddit-rules', { method: 'POST' });
+      const body = await response.json().catch(() => undefined) as { drafts?: RuleConfigV2[]; errors?: string[]; error?: string } | undefined;
+      if (!response.ok) {
+        throw new Error(body?.error ?? `Import failed (${response.status})`);
+      }
+      const drafts = body?.drafts ?? [];
+      if (drafts.length === 0) {
+        throw new Error(body?.errors?.join(' ') || 'No draftable subreddit rules were returned.');
+      }
+      onDrafts(drafts);
+      if (body?.errors?.length) {
+        setQuestions(body.errors.slice(0, 3));
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  return (
+    <section className="rule-builder">
+      <div className="rule-builder-heading">
+        <div>
+          <h3>RulePilot AI Builder</h3>
+          <span>Generate disabled drafts for moderators to review, simulate, and save.</span>
+        </div>
+        <button className="secondary-button" disabled={loading !== null} onClick={() => void importSubredditRules()}>Import subreddit rules</button>
+      </div>
+      <div className="builder-template-grid">
+        {BUILDER_TEMPLATES.map((template) => (
+          <button
+            className="builder-template"
+            disabled={loading !== null}
+            key={template.id}
+            onClick={() => void draftFromBody(template.id, { mode: 'template', templateId: template.id })}
+            type="button"
+          >
+            <strong>{template.label}</strong>
+            <span>{template.description}</span>
+          </button>
+        ))}
+      </div>
+      <div className="builder-prompt-row">
+        <label className="editor-field full">
+          <span>Describe the rule you want</span>
+          <textarea rows={3} value={intent} onChange={(e) => setIntent(e.target.value)} placeholder="Example: flag posts asking for homework answers unless they show their attempt" />
+        </label>
+        <button className="primary-button" disabled={loading !== null || !intent.trim()} onClick={() => void draftFromBody('natural', { mode: 'natural_language', intent })}>
+          {loading === 'natural' ? 'Drafting' : 'Draft rule'}
+        </button>
+      </div>
+      {questions.length ? <div className="builder-note"><strong>Needs clarification</strong><ul>{questions.map((question) => <li key={question}>{question}</li>)}</ul></div> : null}
+      {error ? <div className="rule-studio-error" role="alert">{error}</div> : null}
+    </section>
   );
 }
 
@@ -509,7 +802,7 @@ function RuleStudioRow({ rule, onEdit, onToggle, onDelete }: { rule: RuleConfigV
         <div className="rs-row-info">
           <strong>{rule.title}</strong>
           <span className="rs-row-meta">
-            <span className={`status-pill action-${rule.action === 'allow' ? 'none' : rule.action === 'log' ? 'logged' : rule.action === 'flag' ? 'flagged' : 'filtered'}`}>{actionOptions.find((o) => o.value === rule.action)?.label ?? rule.action}</span>
+            <span className={`status-pill action-${routingActionStatusClass(rule.action)}`}>{routingActionLabel(rule.action)}</span>
             <span className="rs-category-pill">{categoryLabels[rule.category]}</span>
             <span>{pct(rule.threshold)}</span>
             {rule.source === 'preset' && <span className="rs-preset-badge">Preset</span>}
@@ -528,6 +821,7 @@ function RuleStudioRow({ rule, onEdit, onToggle, onDelete }: { rule: RuleConfigV
 function RuleStudio({ rules, refresh, timezone }: { rules: RuleConfigV2[]; refresh: () => Promise<void>; timezone: string }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [drafts, setDrafts] = useState<RuleConfigV2[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -559,6 +853,22 @@ function RuleStudio({ rules, refresh, timezone }: { rules: RuleConfigV2[]; refre
       const response = await fetch('/api/rules/v2', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) });
       await requireOk(response, 'Could not create rule');
       setCreating(false);
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally { setSaving(false); }
+  };
+  const handleSaveDraft = async (draftId: string, form: Partial<RuleConfigV2>) => {
+    setError(null);
+    setSaving(true);
+    try {
+      const response = await fetch('/api/rules/v2', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...form, enabled: false }),
+      });
+      await requireOk(response, 'Could not save draft rule');
+      setDrafts((items) => items.filter((item) => item.id !== draftId));
       await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -620,8 +930,35 @@ function RuleStudio({ rules, refresh, timezone }: { rules: RuleConfigV2[]; refre
         </div>
       </div>
       {error ? <div className="rule-studio-error" role="alert">{error}</div> : null}
+      <RuleBuilder
+        onDraft={(rule) => {
+          setCreating(false);
+          setEditingId(null);
+          setDrafts((items) => [rule, ...items]);
+        }}
+        onDrafts={(items) => {
+          setCreating(false);
+          setEditingId(null);
+          setDrafts((current) => [...items, ...current]);
+        }}
+      />
       {creating && <RuleEditor initial={emptyRule()} onSave={(f) => void handleSaveNew(f)} onCancel={() => setCreating(false)} saving={saving} timezone={timezone} />}
       <div className="rs-list">
+        {drafts.map((draft) => (
+          <div key={draft.id}>
+            <div className="draft-banner">
+              <strong>Generated draft</strong>
+              <span>Review, simulate, and save. It will stay disabled until a moderator enables it.</span>
+            </div>
+            <RuleEditor
+              initial={draft}
+              onSave={(form) => void handleSaveDraft(draft.id, form)}
+              onCancel={() => setDrafts((items) => items.filter((item) => item.id !== draft.id))}
+              saving={saving}
+              timezone={timezone}
+            />
+          </div>
+        ))}
         {rules.map((rule) => (
           <div key={rule.id}>
             <RuleStudioRow rule={rule} onEdit={() => { setEditingId(rule.id); setCreating(false); }} onToggle={(e) => void handleToggle(rule.id, e)} onDelete={() => void handleDelete(rule.id)} />

@@ -4,8 +4,8 @@ import type {
   PostInput,
   RuleCondition,
   RuleConfigV2,
-  SuggestedAction,
 } from '../shared/types';
+import { suggestedActionForRoutingAction } from '../shared/actions';
 
 // ---------------------------------------------------------------------------
 // Text helpers
@@ -339,19 +339,6 @@ function evaluateOutOfScope(
 // Main: deterministic classification
 // ---------------------------------------------------------------------------
 
-function actionForRule(rule: RuleConfigV2): SuggestedAction {
-  switch (rule.action) {
-    case 'filter':
-      return 'filter_to_modqueue';
-    case 'flag':
-      return 'flag_for_review';
-    case 'log':
-      return 'log';
-    default:
-      return 'allow';
-  }
-}
-
 function confidenceForRule(rule: RuleConfigV2): number {
   // Deterministic matches get a confidence boost over the rule threshold
   return Math.min(0.95, Math.max(rule.threshold, 0.8));
@@ -405,7 +392,7 @@ export function deterministicClassifyPost(
     }
 
     if (result.matched) {
-      const suggestedAction = actionForRule(rule);
+      const suggestedAction = suggestedActionForRoutingAction(rule.action);
       const confidence = confidenceForRule(rule);
 
       // Special decision overrides for specific rules

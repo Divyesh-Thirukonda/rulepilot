@@ -10,9 +10,9 @@ RulePilot is a Devvit moderation app that helps moderators enforce nuanced natur
 
 The app ships with an r/csMajors preset covering out-of-scope posts, memes, surveys/hiring/referrals, resume sticky routing, live OA question discussion, spam, low-quality posts, common questions, AI/LLM policy, college comparisons, laptop posts, restricted topics, and personal projects.
 
-Moderators can configure scan mode, enabled rules, confidence threshold, timezone, LLM usage, and model. They can manually scan a post, mark a RulePilot result correct, mark false positives, and create a dashboard post with recent cases and aggregate stats.
+Moderators can configure scan mode, enabled rules, confidence threshold, timezone, LLM usage, and model. They can manually scan a post, mark a RulePilot result correct, mark false positives, and create a dashboard post with recent cases and aggregate stats. Rule Studio lets mods create, edit, disable, import, export, simulate, and AI-draft rules from natural language, one-click templates, or existing subreddit rules.
 
-RulePilot is designed to complement Reddit's existing moderation and safety systems. It is event-driven on new post submissions and explicit moderator scans; it does not crawl historical content, run recurring scans, ban users, permanently remove content, or inspect author history. High-confidence actions route into native moderator review surfaces, and every case remains auditable.
+RulePilot is designed to complement Reddit's existing moderation and safety systems. It is event-driven on new post submissions, AutoModerator filter events, and explicit moderator scans; it does not crawl historical content, run recurring scans, ban users, permanently remove content, DM users, or inspect author history. AutoModerator remains the right place for deterministic regex and known-pattern rules. RulePilot focuses on nuanced triage, explainable review routing, disabled AI-generated drafts, and mod-facing redirect guidance.
 
 ## Project Impact
 
@@ -28,6 +28,7 @@ Impact:
 - makes rule enforcement easier to audit because every action has a matched rule, confidence, rationale, and feedback state;
 - gives mods a measurable false-positive loop instead of opaque regex-only filtering.
 - keeps existing moderation workflows intact by adding explainable triage rather than replacing Reddit's mod queue, AutoModerator, or safety enforcement.
+- helps more communities adopt the tool because mods can generate their own disabled draft rules instead of waiting for the app developer to hardcode community-specific logic.
 
 ## Ported Project Fields
 
