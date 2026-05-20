@@ -795,8 +795,17 @@ a:hover {
   align-items: center;
   border-top: 1px solid var(--rp-neutral-border-weak);
   display: flex;
-  justify-content: center;
+  justify-content: flex-start;
   padding: 14px;
+}
+
+.rs-create-row .create-rule-button {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+  min-height: 38px;
+  padding: 0 14px;
+  width: auto;
 }
 
 .rs-list {

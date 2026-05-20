@@ -1036,14 +1036,12 @@ function RuleStudio({ rules, refresh, timezone }: { rules: RuleConfigV2[]; refre
             </div>
           ))}
           {localRules.length === 0 && drafts.length === 0 && <div className="empty-panel"><strong>No rules yet</strong><span>Create a new rule or import an existing RulePilot rule file.</span></div>}
-        </div>
-        <div className="rs-create-row">
-          <button aria-label="Draft a new rule" className="primary-button icon-button create-rule-button" onClick={openRuleBuilder} type="button">
-            <svg aria-hidden="true" viewBox="0 0 24 24">
-              <path d="M12 5v14" />
-              <path d="M5 12h14" />
-            </svg>
-          </button>
+          <div className="rs-create-row">
+            <button className="primary-button create-rule-button" onClick={openRuleBuilder} type="button">
+              <span aria-hidden="true">+</span>
+              <span>New Rule</span>
+            </button>
+          </div>
         </div>
       </section>
       <div className="rs-footer-actions" aria-label="Rule Studio actions">
