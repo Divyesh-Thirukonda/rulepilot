@@ -344,6 +344,137 @@ function compactRules(rules: RuleBuilderRequest['currentRules']): RuleBuilderReq
   }));
 }
 
+function sentenceCase(value: string): string {
+  const trimmed = value.replace(/\s+/g, ' ').trim();
+  if (!trimmed) {
+    return 'Custom moderation rule';
+  }
+  return `${trimmed.charAt(0).toUpperCase()}${trimmed.slice(1)}`;
+}
+
+function titleFromIntent(intent: string): string {
+  const lower = intent.toLowerCase();
+  if (/\b(ragebait|satire|shitpost|meme|joke)\b/.test(lower) && /\bsunday|weekend\b/.test(lower)) {
+    return 'Timed satire and ragebait rule';
+  }
+  if (/\bresume|cv\b/.test(lower)) return 'Route resume posts';
+  if (/\bsurvey|questionnaire|research study|participants?\b/.test(lower)) return 'Require approval for surveys';
+  if (/\bhiring|referral|recruit|job opening|internship opening\b/.test(lower)) return 'Require approval for hiring and referrals';
+  if (/\bhomework|assignment|solve this|answer this|code for me\b/.test(lower)) return 'Homework help must show effort';
+  if (/\bai slop|low[- ]effort ai|chatgpt dump|prompt dump\b/.test(lower)) return 'Low-effort AI content';
+  return sentenceCase(intent).slice(0, 80);
+}
+
+function categoryFromIntent(intent: string): RuleCategory {
+  const lower = intent.toLowerCase();
+  if (/\b(ragebait|satire|shitpost|meme|joke|spoiler|title|format)\b/.test(lower)) return 'format';
+  if (/\brude|insult|harass|civility|respectful\b/.test(lower)) return 'civility';
+  if (/\bsurvey|hiring|referral|self[- ]promotion|promo|spam|recruit\b/.test(lower)) return 'promotion';
+  if (/\bresume|megathread|sticky|weekly thread\b/.test(lower)) return 'megathread';
+  if (/\boff[- ]topic|out of scope|elsewhere|wrong subreddit\b/.test(lower)) return 'scope';
+  if (/\boa|online assessment|interview question|exam|contest\b/.test(lower)) return 'sensitive';
+  return 'quality';
+}
+
+function actionFromIntent(intent: string): RuleAction {
+  const lower = intent.toLowerCase();
+  if (/\bfilter|mod queue|approval|required approval|require approval|route|megathread|sticky\b/.test(lower)) return 'filter';
+  if (/\blog only|monitor\b/.test(lower)) return 'log';
+  if (/\ballow|approve\b/.test(lower) && !/\bonly allow|except|unless\b/.test(lower)) return 'allow';
+  return 'flag';
+}
+
+function semanticRubricForIntent(intent: string): string {
+  const lower = intent.toLowerCase();
+  const disclaimer = /\bdisclaimer|note at the bottom|bottom of the post\b/.test(lower)
+    ? ' If the rule requires a disclaimer, match when the post lacks a visible disclaimer or the disclaimer is not clearly placed where the moderator requested.'
+    : '';
+  const sunday = /\bsunday|sundays\b/.test(lower)
+    ? ' If the rule has a Sunday exception, match posts outside Sunday in the configured subreddit timezone unless the moderator clearly intended the opposite.'
+    : '';
+
+  return [
+    `Detect posts for moderator intent: "${intent}".`,
+    'Match when the visible post title, body, flair, URL/domain, post type, or configured timing clearly satisfies the violation side of that intent.',
+    disclaimer,
+    sunday,
+    'Do not match good-faith posts that only share surface keywords, meta discussion about the rule, or posts where the required exception is visibly satisfied.',
+    'Evidence cues must come only from the provided post content, flair, URL/domain, post type, and local datetime. Do not infer author history or private behavior.',
+    'If the rule logic is ambiguous or only partially supported by the visible post, choose needs_review or insufficient_context rather than violation.',
+  ].filter(Boolean).join(' ').slice(0, 1000);
+}
+
+function fallbackConditions(intent: string): RuleCondition[] {
+  const lower = intent.toLowerCase();
+  const conditions: RuleCondition[] = [];
+
+  if (/\b(ragebait|satire|shitpost|meme|joke|bait|copypasta)\b/.test(lower)) {
+    conditions.push({
+      type: 'keyword',
+      field: 'title_and_body',
+      value: 'ragebait|satire|shitpost|meme|joke|bait|copypasta|hot take',
+    });
+  }
+  if (/\bresume|cv\b/.test(lower)) {
+    conditions.push({ type: 'keyword', field: 'title_and_body', value: 'resume|cv|roast|review|feedback|rate' });
+  }
+  if (/\bsurvey|questionnaire|research study|participants?\b/.test(lower)) {
+    conditions.push({ type: 'keyword', field: 'title_and_body', value: 'survey|questionnaire|research study|participants|google form|qualtrics' });
+  }
+  if (/\bdisclaimer|note at the bottom|bottom of the post\b/.test(lower)) {
+    conditions.push({
+      type: 'regex',
+      field: 'body',
+      value: '\\b(disclaimer|satire|parody|not serious|for humor|for entertainment)\\b',
+      negate: true,
+    });
+  }
+  if (/\bsunday|sundays\b/.test(lower)) {
+    conditions.push({ type: 'day_of_week', value: '', days: ['Sunday'], negate: true });
+  }
+  conditions.push({ type: 'semantic', value: semanticRubricForIntent(intent) });
+  return conditions;
+}
+
+export function buildFallbackRuleDraft(request: RuleBuilderRequest, reason?: string): RuleBuilderResponse {
+  const sourceText = request.intent?.trim()
+    || [request.subredditRule?.title, request.subredditRule?.description].filter(Boolean).join(': ').trim();
+  if (!sourceText) {
+    return {
+      status: 'needs_clarification',
+      questions: ['What kind of posts should this rule match?', 'What action should RulePilot suggest when it matches?'],
+    };
+  }
+
+  const now = new Date().toISOString();
+  const sourceTextLower = sourceText.toLowerCase();
+  const rule: RuleConfigV2 = {
+    id: generateRuleId(),
+    title: titleFromIntent(sourceText),
+    description: `Drafted from moderator intent: ${sourceText}`,
+    examples: [`Example that should match: ${sourceText}`],
+    negativeExamples: ['Good-faith post that discusses the topic without violating the rule.'],
+    action: actionFromIntent(sourceText),
+    threshold: categoryFromIntent(sourceText) === 'format' ? 0.72 : 0.76,
+    category: categoryFromIntent(sourceText),
+    enabled: false,
+    conditions: fallbackConditions(sourceText),
+    createdAt: now,
+    updatedAt: now,
+    source: 'custom',
+    modNotes: `Fallback draft generated for moderator review${reason ? ` because ${reason}` : ''}. Test in the simulator before enabling.`,
+  };
+
+  if (/\bresume|cv\b/.test(sourceTextLower)) {
+    rule.redirectTargetType = 'megathread';
+    rule.redirectTarget = 'Resume sticky';
+    rule.redirectTemplate = 'Please use the resume sticky thread for resume reviews.';
+    rule.redirect = rule.redirectTemplate;
+  }
+
+  return { status: 'draft', rule };
+}
+
 export function buildRuleBuilderPayload(request: RuleBuilderRequest): Record<string, unknown> {
   return {
     task: 'Draft one disabled RulePilot rule for moderator review.',
@@ -474,38 +605,45 @@ export async function draftRuleWithOpenAI(options: {
   if (options.request.mode === 'template' && options.request.templateId) {
     return buildTemplateRuleDraft(options.request.templateId);
   }
-  const response = await fetch('https://api.openai.com/v1/responses', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${options.apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: options.model,
-      input: [
-        {
-          role: 'system',
-          content:
-            RULE_BUILDER_SYSTEM_PROMPT,
-        },
-        {
-          role: 'user',
-          content: JSON.stringify(buildRuleBuilderPayload(options.request)),
-        },
-      ],
-      text: {
-        format: {
-          type: 'json_schema',
-          name: 'rulepilot_rule_builder',
-          strict: true,
-          schema: AI_RULE_DRAFT_SCHEMA,
-        },
+  try {
+    const response = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${options.apiKey}`,
+        'Content-Type': 'application/json',
       },
-    }),
-  });
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`OpenAI rule draft failed: ${response.status} ${body.slice(0, 300)}`);
+      body: JSON.stringify({
+        model: options.model,
+        input: [
+          {
+            role: 'system',
+            content:
+              RULE_BUILDER_SYSTEM_PROMPT,
+          },
+          {
+            role: 'user',
+            content: JSON.stringify(buildRuleBuilderPayload(options.request)),
+          },
+        ],
+        text: {
+          format: {
+            type: 'json_schema',
+            name: 'rulepilot_rule_builder',
+            strict: true,
+            schema: AI_RULE_DRAFT_SCHEMA,
+          },
+        },
+      }),
+    });
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(`OpenAI rule draft failed: ${response.status} ${body.slice(0, 300)}`);
+    }
+    return parseRuleBuilderResponse(await response.json());
+  } catch (error) {
+    return buildFallbackRuleDraft(
+      options.request,
+      error instanceof Error ? error.message.slice(0, 220) : 'OpenAI rule draft was unavailable'
+    );
   }
-  return parseRuleBuilderResponse(await response.json());
 }

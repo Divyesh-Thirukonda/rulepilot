@@ -12,6 +12,7 @@
     "launch": "npm run deploy && devvit publish",
     "login": "devvit login",
     "test": "vitest run",
+    "test:demo": "vitest run src/server/rule-builder.test.ts src/server/classifier.test.ts src/server/heuristics.test.ts src/server/openai.test.ts",
     "type-check": "tsc --noEmit"
   },
   "engines": {

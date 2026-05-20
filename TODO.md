@@ -37,6 +37,7 @@ Note: Whenever more things need to be added to the todo like when you discover n
   - [ ] moderator feedback buttons;
   - [ ] install settings.
 - [ ] Add a short demo script showing submission, triage, dashboard review, and feedback.
+- [x] Add demo smoke coverage so the AI Builder creates a disabled fallback draft instead of surfacing unexplained 500 errors during live demos.
 - [ ] Fill out app listing copy, privacy policy link, terms link, and support/contact path.
 - [ ] Publish only after verifying post-delete cleanup and Redis retention behavior in playtest logs.
 

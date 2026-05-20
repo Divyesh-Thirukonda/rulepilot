@@ -1,8 +1,18 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { buildRuleBuilderPayload, buildTemplateRuleDraft, parseRuleBuilderResponse } from './rule-builder';
+import {
+  buildFallbackRuleDraft,
+  buildRuleBuilderPayload,
+  buildTemplateRuleDraft,
+  draftRuleWithOpenAI,
+  parseRuleBuilderResponse,
+} from './rule-builder';
 
 describe('RulePilot AI Builder', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('parses a valid structured LLM response into a disabled RuleConfigV2 draft', () => {
     const response = parseRuleBuilderResponse({
       output_text: JSON.stringify({
@@ -167,5 +177,67 @@ describe('RulePilot AI Builder', () => {
     expect(text).toContain('Do not claim authorship detection');
     expect(text).toContain('No live interview, online assessment, exam, or contest question sharing');
     expect(text).toContain('Buying advice, laptop recommendations, or setup questions belong elsewhere');
+  });
+
+  it('falls back to a disabled local draft instead of surfacing an OpenAI failure', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('upstream unavailable', { status: 500 })));
+
+    const response = await draftRuleWithOpenAI({
+      request: {
+        mode: 'natural_language',
+        intent: 'only allow ragebait posts on sundays and if they put a disclaimer at the bottom of the post',
+        timezone: 'America/Chicago',
+        currentRules: [],
+      },
+      apiKey: 'test-key',
+      model: 'gpt-5-nano',
+    });
+
+    expect(response.status).toBe('draft');
+    if (response.status === 'draft') {
+      expect(response.rule.enabled).toBe(false);
+      expect(response.rule.title).toBe('Timed satire and ragebait rule');
+      expect(response.rule.conditions.some((condition) => condition.type === 'day_of_week' && condition.negate)).toBe(true);
+      expect(response.rule.conditions.some((condition) => condition.type === 'regex' && condition.field === 'body' && condition.negate)).toBe(true);
+      expect(response.rule.conditions.some((condition) => condition.type === 'semantic' && condition.value.includes('disclaimer'))).toBe(true);
+      expect(response.rule.modNotes).toContain('Fallback draft');
+    }
+  });
+
+  it('can create conservative fallback drafts for common demo prompts', () => {
+    const prompts = [
+      'only allow ragebait posts on sundays and if they put a disclaimer at the bottom of the post',
+      'no AI slop',
+      'require approval for surveys',
+      'route resume posts to a megathread',
+      'no live OA questions',
+      'no homework answer requests without effort',
+      'no hiring or referral posts without mod approval',
+      'flag rude posts',
+      'route laptop buying advice elsewhere',
+      'no low effort title only questions',
+      'no spoiler posts without title tags',
+      'flag off topic career-only posts',
+      'personal project showcases must include technical detail',
+      'no self promotion spam',
+      'only allow memes on Sundays',
+    ];
+
+    for (const intent of prompts) {
+      const response = buildFallbackRuleDraft({
+        mode: 'natural_language',
+        intent,
+        timezone: 'America/Chicago',
+        currentRules: [],
+      });
+      expect(response.status, intent).toBe('draft');
+      if (response.status === 'draft') {
+        expect(response.rule.enabled, intent).toBe(false);
+        expect(response.rule.title.length, intent).toBeGreaterThan(0);
+        expect(response.rule.conditions.length, intent).toBeGreaterThan(0);
+        expect(response.rule.conditions.some((condition) => condition.type === 'semantic'), intent).toBe(true);
+        expect(response.rule.conditions.at(-1)?.value, intent).toContain('Evidence cues');
+      }
+    }
   });
 });

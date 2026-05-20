@@ -29,7 +29,7 @@ import type {
   SubredditRuleInput,
 } from '../shared/types';
 import { buildAutomoderatorCase } from './automod';
-import { draftRuleWithOpenAI } from './rule-builder';
+import { buildFallbackRuleDraft, draftRuleWithOpenAI } from './rule-builder';
 import { scanPost } from './classifier';
 import { enabledRulesFromList } from './policy';
 import { getOpenAiApiKey, getRulePilotSettings } from './settings';
@@ -46,6 +46,13 @@ import {
 } from './rule-storage';
 
 const app = new Hono();
+
+app.onError((error, c) => {
+  console.error('[RulePilot] Unhandled server error', error);
+  return c.json({
+    error: error instanceof Error ? error.message : 'Unexpected RulePilot server error.',
+  }, 500);
+});
 
 // ---------------------------------------------------------------------------
 // Rule input validation
@@ -796,14 +803,15 @@ app.post('/api/rules/v2/ai-draft', async (c) => {
   if (body.mode === 'template' && !body.templateId) {
     return c.json({ error: 'templateId is required for template drafting.' }, 400);
   }
+  const request = ruleBuilderRequest(body, currentRules, settings.timezone);
   if (body.mode !== 'template' && !apiKey) {
-    return c.json({ error: 'OpenAI API key is required for AI Builder drafts.' }, 400);
+    return c.json(buildFallbackRuleDraft(request, 'OpenAI API key is not configured'));
   }
 
   let draft: RuleBuilderResponse;
   try {
     draft = await draftRuleWithOpenAI({
-      request: ruleBuilderRequest(body, currentRules, settings.timezone),
+      request,
       apiKey: apiKey ?? '',
       model: settings.openAiModel,
     });
