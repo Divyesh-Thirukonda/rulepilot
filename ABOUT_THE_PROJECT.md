@@ -2,25 +2,29 @@
 
 ## Inspiration
 
-I have an app on my phone called Routines, which allows you to create custom routines for your phone based on various triggers and actions. For example, when I get in my car (trigger), my phone will automatically turn on my mobile hotspot (action).
+I opened Reddit and a few posts on r/csmajors had shown up. One of them was clearly a spam post trying to market his own app, which was against the rules of the subreddit. Granted it was taken down by a moderator, but not before 3 people had commented "spam" on it. If only AutoModerator could have caught it.
 
-This got me thinking, what if we could create a similar system for moderators on Reddit? Moderators often deal with rules that are easy for humans to understand but hard to express with regex. In r/csMajors, for example, posts about resumes, career-only advice, laptop recommendations, college comparisons, surveys, hiring, referrals, live online assessments, and weekday memes all need different handling. Some should be reviewed, some should be routed to a megathread, and some should be sent to a more relevant community.
+Moderators often deal with rules that are easy for humans to understand but hard to express with regex. In r/csMajors, for example, posts about Amazon get routed to a megathread, posts about live online assessments are not allowed, and posts about programming humor should be sent to a different subreddit. In some communities, weekday memes are ONLY allowed on Sundays. These rules all need different handling, far too complex for a moderator to code out from scratch using reddit's limited auto mod features.
 
-RulePilot started from that problem: give moderators a practical way to enforce nuanced community rules without asking them to hardcode every edge case.
+RulePilot started to solve this problem. Give mods a practical way to enforce community rules.
+
+### Metaphor
+
+I have an app on my phone called Routines, which allows you to create custom routines for your phone based on various triggers and actions. For example, when I get in my car (trigger), my phone will automatically turn on my mobile hotspot (action). This got me thinking, what if we could create a similar system for mods on Reddit?
 
 ## What it does
 
-RulePilot is a human-in-the-loop moderation assistant for subreddits with rules that are too nuanced for AutoModerator regex alone.
+RulePilot scans new posts, explains likely rule matches, and gives mods a dashboard for reviewing cases. It ships with an r/csMajors starter pack, but mods can also create (and import!) their own rules in Rule Studio.
 
-It scans new posts, explains likely rule matches, and gives moderators a dashboard for reviewing cases, tracking false positives, and improving rules over time. It ships with an r/csMajors starter pack, but moderators can also create their own rules in Rule Studio.
+RulePilot also includes an AI Builder that helps mods draft new rules from natural language, one-click templates, or existing subreddit rules. Generated rules are saved as disabled drafts so mods can review, test, edit, and enable them when ready. For broader demos, it includes a generic education-community starter pack for r/EngineeringStudents-style communities.
 
-RulePilot also includes an AI Builder that helps moderators draft new rules from natural language, one-click templates, or existing subreddit rules. Generated rules are saved as disabled drafts so mods can review, test, edit, and enable them when ready. For broader demos, it includes a generic education-community starter pack for r/EngineeringStudents-style communities.
+For violations that are fixable, RulePilot can show mods repair guidance and open a fixed-post draft link. The draft includes the original post link and instructions for what to change, but it does not automatically message users, schedule reposts, or store the full original post body.
 
-For violations that are fixable, RulePilot can show moderators repair guidance and open a fixed-post draft link. The draft includes the original post link and instructions for what to change, but it does not automatically message users, schedule reposts, or store the full original post body.
+[list more features and explain why]
 
 ## How we built it
 
-We built RulePilot as a Devvit app with a server-side moderation pipeline, Redis-backed audit records, moderator menu actions, and a custom post dashboard.
+We built RulePilot as a Devvit app with a server-side moderation pipeline, Redis-backed audit records, moderator menu actions, and a custom post dashboard. I built a TODO list with features I wanted to accomplish, and had Codex help me with the development and debugging processes.
 
 The classifier combines deterministic checks for obvious cases with optional OpenAI structured-output classification for ambiguous rule matches. Rules are stored per subreddit as editable `RuleConfigV2` objects, with conditions for keywords, regex, flair, post type, URL domains, title/body length, day of week, time windows, and semantic categories.
 
@@ -28,11 +32,11 @@ On the moderator side, the dashboard shows recent cases, confidence, matched rul
 
 ## Challenges we ran into
 
-The hardest part was keeping the tool powerful without making it too aggressive. Moderation workflows need trust, so RulePilot had to explain its reasoning, stay auditable, and let moderators make the final call.
+The hardest part was keeping the tool powerful without making it too aggressive. Moderation workflows need trust, so RulePilot had to explain its reasoning and let moderators make the final call on everything.
 
 Another challenge was designing rules that work beyond one subreddit. r/csMajors gave us a concrete starting point, but the app needed to become a reusable system where mods can define their own rules and routing guidance.
 
-We also had to be careful with AI boundaries. RulePilot avoids author history, cross-subreddit behavior, private profile data, and claims like reliable AI-generated-text detection. The AI is used for rule triage and rule drafting, not user profiling.
+Finally, and probably the most important part, was integrating well with existing mod tools rather than building something with duplicate functionality. Reddit has some really solid mod tools, and it would be a shame to completely replace them with our own. Instead, we wanted to create something that would work well with the existing mod tools and provide additional value to moderators, as a helpful add on, not something that would completely replace what mods already use.
 
 ## Accomplishments that we're proud of
 
@@ -50,8 +54,8 @@ We also learned that “AI for moderation” works best when it is narrow, trans
 
 ## What's next for RulePilot
 
-Next, we want to complete live playtesting, collect moderator feedback, and tune the r/csMajors starter pack against real examples.
+Next, we want to complete live playtesting, collect moderator feedback, and tune the LLM prompts for the r/csMajors starter pack against more posts.
 
 After that, we want to add more reusable rule packs for education and career communities, improve the AI Builder with better clarification flows, and expand the dashboard with filters, sorting, and trend views.
 
-Longer term, RulePilot could become a shared rule-building layer for moderators: a place to turn community guidelines into testable, explainable, and reusable moderation workflows.
+RulePilot could become a shared rule-building layer for moderators: a place to turn community guidelines into testable playground for experimentation, and reusable moderation workflows.
