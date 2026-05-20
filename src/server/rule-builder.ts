@@ -137,6 +137,15 @@ type AiRuleDraft = z.infer<typeof aiRuleDraft>;
 type AiConditionDraft = z.infer<typeof conditionDraft>;
 type AiDraftRule = NonNullable<AiRuleDraft['draft']>;
 type RuleBuilderErrorStatus = 400 | 401 | 500 | 502;
+type RulePlanHint = {
+  name: string;
+  requiredStatus?: 'draft' | undefined;
+  deterministicConditionGuidance?: string[] | undefined;
+  requiredSemanticCondition?: string | undefined;
+  requiredConditionTypes?: ConditionType[] | undefined;
+  forbiddenConditionTypes?: ConditionType[] | undefined;
+  modNote?: string | undefined;
+};
 
 const RULE_BUILDER_MAX_ATTEMPTS = 4;
 const RULE_BUILDER_TIMEOUT_MS = 45_000;
@@ -390,7 +399,96 @@ function allowedTimingFromSource(source: string): { label: string; regex: RegExp
   return undefined;
 }
 
-function rulePlanHint(request: RuleBuilderRequest): Record<string, unknown> | undefined {
+function domainFromSource(source: string): string | undefined {
+  const match = source.match(/\b((?:[a-z0-9-]+\.)+[a-z]{2,})\b/i);
+  return match?.[1]?.toLowerCase();
+}
+
+function deterministicRulePlanHint(source: string, allowedTiming: { label: string; regex: RegExp } | undefined): RulePlanHint | undefined {
+  const domain = domainFromSource(source);
+  if (domain && /\b(domain|url|link|website|site|from|to)\b/.test(source)) {
+    return {
+      name: 'url_domain_condition',
+      requiredStatus: 'draft',
+      requiredConditionTypes: ['url_domain'],
+      deterministicConditionGuidance: [
+        `Add a url_domain condition for ${domain}.`,
+        'Use deterministic URL domain matching instead of a regex when the moderator names a domain.',
+        'Use semantic only if the moderator also asks for a subjective judgment beyond the domain match.',
+      ],
+    };
+  }
+  if (/\b(flair|tagged as|with tag)\b/.test(source)) {
+    return {
+      name: 'flair_condition',
+      requiredStatus: 'draft',
+      requiredConditionTypes: ['flair'],
+      deterministicConditionGuidance: [
+        'Add a flair condition when the moderator references flair or a post tag.',
+        'Use semantic only if the flair is a weak cue for a subjective rule.',
+      ],
+    };
+  }
+  if (/\b(link posts?|links only|text posts?|self posts?|media posts?|image posts?|video posts?|polls?|crossposts?)\b/.test(source)) {
+    return {
+      name: 'post_type_condition',
+      requiredStatus: 'draft',
+      requiredConditionTypes: ['post_type'],
+      deterministicConditionGuidance: [
+        'Add a post_type condition when the moderator names a Reddit post type.',
+        'Valid post types are text, link, media, poll, and crosspost.',
+      ],
+    };
+  }
+  if (/\btitles?\b/.test(source) && /\b(length|short|shorter|long|longer|under|over|less than|more than|minimum|maximum|\d+\s*(?:chars?|characters?|words?))\b/.test(source)) {
+    return {
+      name: 'title_length_condition',
+      requiredStatus: 'draft',
+      requiredConditionTypes: ['title_length'],
+      deterministicConditionGuidance: [
+        'Add a title_length condition when the moderator gives a measurable title length rule.',
+        'Use min or max numeric bounds instead of regex for title length.',
+      ],
+    };
+  }
+  if (/\b(body|selftext|post body)\b/.test(source) && /\b(length|empty|short|shorter|long|longer|under|over|less than|more than|minimum|maximum|\d+\s*(?:chars?|characters?|words?))\b/.test(source)) {
+    return {
+      name: 'body_length_condition',
+      requiredStatus: 'draft',
+      requiredConditionTypes: ['body_length'],
+      deterministicConditionGuidance: [
+        'Add a body_length condition when the moderator gives a measurable body length rule.',
+        'Use min or max numeric bounds instead of regex for body length.',
+      ],
+    };
+  }
+  if (allowedTiming && !/\b(disclaimer|bottom of the post|bottom-of-post|note at the bottom)\b/.test(source)) {
+    return {
+      name: 'day_of_week_condition',
+      requiredStatus: 'draft',
+      requiredConditionTypes: ['day_of_week'],
+      deterministicConditionGuidance: [
+        `Add a day_of_week condition for ${allowedTiming.label}.`,
+        'For "only allow X on this day" rules, use negate=true so the rule matches posts outside the allowed day.',
+        'Do not hide simple day-only logic only inside the semantic condition.',
+      ],
+    };
+  }
+  if (/\b(time window|between|after|before|\d{1,2}\s*(?:am|pm)|\d{1,2}:\d{2})\b/.test(source)) {
+    return {
+      name: 'time_window_condition',
+      requiredStatus: 'draft',
+      requiredConditionTypes: ['time_window'],
+      deterministicConditionGuidance: [
+        'Add a time_window condition when the moderator names a concrete local time range.',
+        'Use the subreddit timezone setting; min/max are local hours in 24-hour time.',
+      ],
+    };
+  }
+  return undefined;
+}
+
+function rulePlanHint(request: RuleBuilderRequest): RulePlanHint | undefined {
   const source = [request.intent, request.subredditRule?.title, request.subredditRule?.description]
     .filter(Boolean)
     .join(' ')
@@ -405,6 +503,7 @@ function rulePlanHint(request: RuleBuilderRequest): Record<string, unknown> | un
     return {
       name: 'timed_content_with_required_disclaimer',
       requiredStatus: 'draft',
+      forbiddenConditionTypes: ['day_of_week'],
       deterministicConditionGuidance: [
         'Use only broad preconditions for ragebait/satire/meme-like content, such as keyword, flair, or post_type when useful.',
         'Do not add day_of_week as a deterministic condition for this rule.',
@@ -413,6 +512,8 @@ function rulePlanHint(request: RuleBuilderRequest): Record<string, unknown> | un
       ],
       requiredSemanticCondition:
         `Add exactly one semantic condition. Its value must explicitly include "${allowedTiming.label}" and "disclaimer". It must say: Detect ragebait/satire-like posts. Match when the post is ragebait/satire/bait and either the local subreddit timing is not ${allowedTiming.label} or the post body does not end with a clear disclaimer. Do not match sincere posts, meta discussion, non-ragebait content, or ${allowedTiming.label} ragebait/satire posts that include a clear bottom-of-post disclaimer. Evidence cues must include title/body/flair and local datetime only. If the day or disclaimer placement is unclear, choose needs_review.`,
+      modNote:
+        'RulePilot kept the timing/disclaimer exception inside the semantic rubric because RulePilot conditions are ANDed. Adding a day_of_week condition would miss one of the violation paths.',
     };
   }
   if (/\b(ai slop|low[- ]effort ai|chatgpt dump|prompt dump|generated slop)\b/.test(source)) {
@@ -441,7 +542,7 @@ function rulePlanHint(request: RuleBuilderRequest): Record<string, unknown> | un
         'Add exactly one semantic condition. Its value must explicitly include active/live assessment, exact questions, practice, retrospective, and general preparation. It must say: Detect requests to share, solve, or solicit active/live online assessment, interview, exam, or contest questions or answers. Match when the author appears to ask for or provide exact live assessment content. Do not match practice questions, retrospective discussion without exact questions, general preparation advice, or policy discussion. Evidence cues must come from title, body, flair, URL/domain, post type, and local datetime only. If live/active status is unclear, choose needs_review.',
     };
   }
-  return undefined;
+  return deterministicRulePlanHint(source, allowedTiming);
 }
 
 export function buildRuleBuilderPayload(request: RuleBuilderRequest, retryInstruction?: string): Record<string, unknown> {
@@ -466,6 +567,8 @@ export function buildRuleBuilderPayload(request: RuleBuilderRequest, retryInstru
       'For redirects, fill redirectTargetType, redirectTarget, and redirectTemplate only when rerouting is explicit.',
       'When rulePlanHint is present, it overrides generic guidance. Follow rulePlanHint.requiredSemanticCondition exactly enough that a validator can see the required rubric in the semantic condition value.',
       'When rulePlanHint.requiredSemanticCondition is present, the draft must contain exactly one condition with type semantic.',
+      'When rulePlanHint.requiredConditionTypes is present, the draft must include each listed deterministic condition type unless the retry instruction says otherwise.',
+      'When rulePlanHint.forbiddenConditionTypes is present, do not include those condition types.',
       'When rulePlanHint.requiredStatus is draft, the moderator intent is specific enough; return a disabled draft instead of clarification questions.',
       'Remember that RulePilot conditions are ANDed. For exception logic involving "only allow", "unless", "except", or "if", avoid deterministic conditions that accidentally require every violation path at once. Put complex boolean logic in the semantic rubric.',
       'For "only allow X on <day/time> if Y" style rules, the semantic rubric must explicitly mention the allowed day/time, the required condition, what counts as missing the condition, and that nonmatching allowed cases should not be flagged.',
@@ -739,6 +842,27 @@ function conditionMentionsDisclaimer(condition: RuleCondition): boolean {
   return /\b(disclaimer|satire|parody|not serious|humou?r|entertainment)\b/i.test(condition.value);
 }
 
+function annotateDraftForPlan(response: RuleBuilderResponse, request: RuleBuilderRequest): RuleBuilderResponse {
+  if (response.status !== 'draft') {
+    return response;
+  }
+  const plan = rulePlanHint(request);
+  if (!plan?.modNote) {
+    return response;
+  }
+  const existing = response.rule.modNotes?.trim();
+  if (existing?.includes(plan.modNote)) {
+    return response;
+  }
+  return {
+    ...response,
+    rule: {
+      ...response.rule,
+      modNotes: existing ? `${existing}\n\n${plan.modNote}` : plan.modNote,
+    },
+  };
+}
+
 function reviewDraftLogic(response: RuleBuilderResponse, request: RuleBuilderRequest): string | null {
   const plan = rulePlanHint(request);
   if (response.status !== 'draft') {
@@ -752,6 +876,19 @@ function reviewDraftLogic(response: RuleBuilderResponse, request: RuleBuilderReq
   const semanticConditions = response.rule.conditions.filter((condition) => condition.type === 'semantic');
   if (requiredSemanticCondition && semanticConditions.length !== 1) {
     return 'This moderator intent requires exactly one semantic condition. Deterministic checks may be included as weak preconditions, but they cannot replace the semantic classifier rubric.';
+  }
+  const requiredConditionTypes = plan?.requiredConditionTypes ?? [];
+  const missingConditionType = requiredConditionTypes.find((type) =>
+    !response.rule.conditions.some((condition) => condition.type === type)
+  );
+  if (missingConditionType) {
+    return `This moderator intent requires a ${missingConditionType} deterministic condition. Add that condition type instead of relying only on regex or semantic text.`;
+  }
+  const forbiddenConditionType = plan?.forbiddenConditionTypes?.find((type) =>
+    response.rule.conditions.some((condition) => condition.type === type)
+  );
+  if (forbiddenConditionType) {
+    return `This moderator intent should not use a ${forbiddenConditionType} deterministic condition because it would encode compound exception logic incorrectly. Put that part in the semantic rubric.`;
   }
   const sourceText = sourceTextForRequest(request);
   const allowedTiming = allowedTimingFromSource(sourceText);
@@ -793,6 +930,12 @@ function retryInstructionFor(error: RuleBuilderGenerationError, attempt: number,
     ...error.details.slice(0, 5),
     plan?.requiredSemanticCondition
       ? `This retry will be rejected unless the draft includes exactly one semantic condition that follows this requirement: ${plan.requiredSemanticCondition}`
+      : '',
+    plan?.requiredConditionTypes?.length
+      ? `This retry will be rejected unless the draft includes these deterministic condition types: ${plan.requiredConditionTypes.join(', ')}.`
+      : '',
+    plan?.forbiddenConditionTypes?.length
+      ? `Do not include these condition types in the retry: ${plan.forbiddenConditionTypes.join(', ')}.`
       : '',
     'Regenerate the rule from scratch as one strict JSON response.',
     'Do not repeat the invalid structure.',
@@ -854,7 +997,7 @@ export async function draftRuleWithOpenAI(options: {
           retryable: true,
         });
       }
-      return result;
+      return annotateDraftForPlan(result, options.request);
     } catch (error) {
       const normalized = toRuleBuilderError(error);
       attemptDetails.push(

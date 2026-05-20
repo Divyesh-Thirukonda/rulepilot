@@ -1047,7 +1047,7 @@ function RuleStudio({ rules, refresh, timezone }: { rules: RuleConfigV2[]; refre
           <div><h2>Rule Studio</h2><span>{localRules.length} rules</span></div>
         </div>
         {error ? <div className="rule-studio-error" role="alert">{error}</div> : null}
-        {needsRefresh ? <div className="rule-studio-sync"><span>Rule changes saved.</span><button className="secondary-button" type="button" onClick={() => void refreshFromServer()}>Refresh dashboard data</button></div> : null}
+        {needsRefresh ? <div className="rule-studio-sync"><span>Rule changes saved.</span><button className="secondary-button" type="button" onClick={() => void refreshFromServer()}>Save changes</button></div> : null}
         <div className="rs-list">
           {localRules.map((rule) => (
             <div key={rule.id}>

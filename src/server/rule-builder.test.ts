@@ -243,6 +243,26 @@ describe('RulePilot AI Builder', () => {
     expect(text).toContain('Do not add day_of_week as a deterministic condition');
   });
 
+  it.each([
+    ['remove posts linking to example.com', 'url_domain'],
+    ['require review for link posts', 'post_type'],
+    ['filter posts with Hiring flair', 'flair'],
+    ['flag titles under 10 characters', 'title_length'],
+    ['filter posts with empty body under 25 characters', 'body_length'],
+    ['only allow memes on Thursdays', 'day_of_week'],
+    ['flag posts after 10pm', 'time_window'],
+  ])('requires %s to use a %s condition when deterministic', (intent, conditionType) => {
+    const payload = buildRuleBuilderPayload({
+      mode: 'natural_language',
+      intent,
+      timezone: 'America/Chicago',
+      currentRules: [],
+    });
+    const rulePlanHint = payload.rulePlanHint as { requiredConditionTypes: string[] };
+
+    expect(rulePlanHint.requiredConditionTypes).toContain(conditionType);
+  });
+
   it('includes a broad common-intent playbook for typical moderator prompts', () => {
     const payload = buildRuleBuilderPayload({
       mode: 'natural_language',
@@ -458,6 +478,63 @@ describe('RulePilot AI Builder', () => {
     const secondBody = JSON.parse(fetchMock.mock.calls[1]?.[1]?.body as string);
     expect(JSON.stringify(secondBody)).toContain('Wednesday/disclaimer exception');
     expect(response.status).toBe('draft');
+    if (response.status === 'draft') {
+      expect(response.rule.modNotes).toContain('RulePilot conditions are ANDed');
+    }
+  });
+
+  it('reprompts when a URL domain rule omits the url_domain condition', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(openAiDraftResponse(validDraft({
+        title: 'Block example.com links',
+        description: 'Flag posts linking to example.com.',
+        conditions: [
+          {
+            type: 'regex',
+            field: 'url',
+            value: 'example\\.com',
+            min: null,
+            max: null,
+            days: [],
+            negate: false,
+          },
+        ],
+      })))
+      .mockResolvedValueOnce(openAiDraftResponse(validDraft({
+        title: 'Block example.com links',
+        description: 'Flag posts linking to example.com.',
+        conditions: [
+          {
+            type: 'url_domain',
+            field: 'url',
+            value: 'example.com',
+            min: null,
+            max: null,
+            days: [],
+            negate: false,
+          },
+        ],
+      })));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await draftRuleWithOpenAI({
+      request: {
+        mode: 'natural_language',
+        intent: 'remove posts linking to example.com',
+        timezone: 'America/Chicago',
+        currentRules: [],
+      },
+      apiKey: 'test-key',
+      model: 'gpt-5-nano',
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const secondBody = JSON.parse(fetchMock.mock.calls[1]?.[1]?.body as string);
+    expect(JSON.stringify(secondBody)).toContain('url_domain');
+    expect(response.status).toBe('draft');
+    if (response.status === 'draft') {
+      expect(response.rule.conditions.some((condition) => condition.type === 'url_domain')).toBe(true);
+    }
   });
 
   it('reprompts when a planned AI slop draft omits a semantic condition', async () => {

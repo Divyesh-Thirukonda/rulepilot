@@ -8,6 +8,8 @@ const LIVE_PROMPTS = [
   'only allow ragebait posts on wednesdays if they put a disclaimer at the bottom of the post',
   'no AI slop',
   'require approval for surveys',
+  'remove posts linking to example.com',
+  'only allow memes on thursdays',
   'no live online assessment questions',
   'no low effort title only questions',
 ];
@@ -28,6 +30,12 @@ function validateLiveDraft(intent: string, rule: RuleConfigV2): string | null {
   }
   if (/\bdisclaimer\b/i.test(intent) && semantic && !/\bdisclaimer\b/i.test(semantic.value)) {
     return 'Semantic condition must mention the disclaimer exception.';
+  }
+  if (/\bexample\.com\b/i.test(intent) && !rule.conditions.some((condition) => condition.type === 'url_domain')) {
+    return 'Generated rule should include a url_domain condition for domain-specific intents.';
+  }
+  if (/\bthursdays?\b/i.test(intent) && !/\bdisclaimer\b/i.test(intent) && !rule.conditions.some((condition) => condition.type === 'day_of_week')) {
+    return 'Generated rule should include a day_of_week condition for simple day-specific intents.';
   }
   return null;
 }
