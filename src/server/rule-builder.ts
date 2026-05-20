@@ -85,7 +85,7 @@ const AI_RULE_DRAFT_SCHEMA = {
                 properties: {
                   type: { type: 'string', enum: CONDITION_TYPES },
                   field: { anyOf: [{ type: 'string', enum: CONDITION_FIELDS }, { type: 'null' }] },
-                  value: { type: 'string', maxLength: 500 },
+                  value: { type: 'string', maxLength: 1000 },
                   min: { anyOf: [{ type: 'number' }, { type: 'null' }] },
                   max: { anyOf: [{ type: 'number' }, { type: 'null' }] },
                   days: { type: 'array', items: { type: 'string', enum: DAYS } },
@@ -142,8 +142,12 @@ type RulePlanHint = {
   requiredStatus?: 'draft' | undefined;
   deterministicConditionGuidance?: string[] | undefined;
   requiredSemanticCondition?: string | undefined;
+  semanticMustInclude?: string[] | undefined;
   requiredConditionTypes?: ConditionType[] | undefined;
   forbiddenConditionTypes?: ConditionType[] | undefined;
+  allowedActions?: RuleAction[] | undefined;
+  requiredDays?: string[] | undefined;
+  requiredDayNegate?: boolean | undefined;
   modNote?: string | undefined;
 };
 
@@ -180,6 +184,10 @@ const RULE_BUILDER_SYSTEM_PROMPT = [
   'For common subreddit moderation intents, combine deterministic conditions with one narrow semantic rubric.',
   'When semantic judgment is needed, write a compact rubric with match criteria, explicit non-matches, evidence cues, and uncertainty handling.',
   'Important: RulePilot conditions are AND gates before the semantic classifier runs. Do not encode OR logic or exception logic as multiple deterministic conditions that must all be true.',
+  'Use regex only for explicit format requirements, exact text patterns, or moderator-provided patterns. Do not invent regex synonym lists for subjective ideas such as ragebait, shitpost, rude, spam, or low quality.',
+  'For subjective labels, prefer one classifier-ready semantic condition. Add deterministic gates only when the moderator explicitly names a concrete field, domain, flair, post type, length, day, or time.',
+  'Semantic condition values must be plain prose strings, not nested JSON objects or markdown.',
+  'When several alternative keywords are truly appropriate, put them in one keyword condition separated by pipes. Do not create separate keyword conditions unless every keyword group must be present.',
   'If the user payload includes rulePlanHint.requiredSemanticCondition, you must include exactly one semantic condition whose value follows that requiredSemanticCondition.',
   'A response without a condition object where type is "semantic" is invalid whenever rulePlanHint.requiredSemanticCondition is present.',
   'A rulePlanHint overrides the generic commonModeratorIntentPlaybook.',
@@ -488,6 +496,248 @@ function deterministicRulePlanHint(source: string, allowedTiming: { label: strin
   return undefined;
 }
 
+function subjectiveContentPlan(source: string, allowedTiming: { label: string; regex: RegExp } | undefined): RulePlanHint | undefined {
+  if (!/\b(rage\s?bait|satire|shitposts?|memes?|joke-only|jokes?|bait posts?)\b/.test(source)) {
+    return undefined;
+  }
+  const contentWords = [
+    /\brage\s?bait\b/.test(source) ? 'ragebait' : '',
+    /\bsatire\b/.test(source) ? 'satire' : '',
+    /\bshitposts?\b/.test(source) ? 'shitposts' : '',
+    /\bmemes?\b/.test(source) ? 'memes' : '',
+    /\bjoke-only|jokes?\b/.test(source) ? 'joke-only content' : '',
+  ].filter(Boolean);
+  const label = contentWords.length ? contentWords.join(', ') : 'subjective humor or bait content';
+
+  if (allowedTiming) {
+    const requiredDays = allowedTiming.label === 'weekend' ? ['Saturday', 'Sunday'] : [allowedTiming.label];
+    return {
+      name: 'timed_subjective_content',
+      requiredStatus: 'draft',
+      requiredConditionTypes: ['day_of_week'],
+      forbiddenConditionTypes: ['keyword', 'regex'],
+      requiredDays,
+      requiredDayNegate: true,
+      deterministicConditionGuidance: [
+        `Add a day_of_week condition with days=${JSON.stringify(requiredDays)}, negate=true, field=null, and value="". For "only allow" wording it should match outside the allowed day.`,
+        'Do not add keyword or regex conditions for the subjective content label. They would miss posts that are semantically the same but do not use that exact word.',
+        'Use exactly one semantic condition to define the content category.',
+      ],
+      requiredSemanticCondition:
+        `Add exactly one semantic condition. Its value must define ${label} as the content category. Match when the post is primarily ${label}, low-context humor, joke-only content, bait, or intentionally unserious content. Do not match sincere questions, substantive discussions, announcements, or meta discussion about the rule. Evidence cues must come from title, body, flair, URL/domain, post type, and local datetime only. If uncertain, choose needs_review.`,
+      semanticMustInclude: ['match', 'do not match', 'evidence', 'uncertain'],
+    };
+  }
+
+  return {
+    name: 'subjective_content',
+    requiredStatus: 'draft',
+    forbiddenConditionTypes: ['keyword', 'regex'],
+    deterministicConditionGuidance: [
+      'Do not add keyword or regex conditions for subjective content categories unless the moderator explicitly said to match exact words.',
+      'Use exactly one semantic condition to define the content category.',
+    ],
+    requiredSemanticCondition:
+      `Add exactly one semantic condition. Its value must define ${label} as the content category. Match when the post is primarily ${label}, low-context humor, joke-only content, bait, or intentionally unserious content. Do not match sincere questions, substantive discussions, announcements, or meta discussion about the rule. Evidence cues must come from title, body, flair, URL/domain, post type, and local datetime only. If uncertain, choose needs_review.`,
+    semanticMustInclude: ['match', 'do not match', 'evidence', 'uncertain'],
+  };
+}
+
+function commonRulePlanHint(source: string, allowedTiming: { label: string; regex: RegExp } | undefined): RulePlanHint | undefined {
+  const hasExplicitTitleLength =
+    /\btitles?\b/.test(source) && /\b(length|shorter|longer|under|over|less than|more than|minimum|maximum|\d+\s*(?:chars?|characters?|words?))\b/.test(source);
+  const hasExplicitBodyLength =
+    /\b(body|selftext|post body)\b/.test(source) && /\b(length|shorter|longer|under|over|less than|more than|minimum|maximum|\d+\s*(?:chars?|characters?|words?))\b/.test(source);
+  if (/\b(flair|tagged as|with tag)\b/.test(source)) {
+    return undefined;
+  }
+
+  if (/\b(is cs for me|regret majoring|job market is bad|ups memes?|h1b|dei|grace hopper|step|explore|restricted posts?)\b/.test(source)) {
+    return {
+      name: 'restricted_recurring_topics',
+      requiredStatus: 'draft',
+      requiredSemanticCondition:
+        'Add exactly one semantic condition. Its value must say: Detect restricted recurring topics that require moderator approval. Match posts whose core topic is "Is CS for me", regret majoring in CS, job-market doomposting, UPS memes, H1B-related discussion, or general DEI discussion. Do not match allowed exceptions such as Grace Hopper Celebration, specific company pipelines like STEP or Explore, or substantive policy/academic discussion that is not the restricted recurring topic. Evidence cues must come from title, body, flair, URL/domain, and post type. If uncertain, choose needs_review.',
+      semanticMustInclude: ['restricted recurring', 'h1b', 'dei', 'grace hopper', 'step', 'explore'],
+    };
+  }
+
+  const subjective = subjectiveContentPlan(source, allowedTiming);
+  if (subjective) return subjective;
+
+  if (/\b(laptop|macbook|suggestalaptop|recommend.*laptop|laptops)\b/.test(source)) {
+    return {
+      name: 'laptop_recommendations',
+      requiredStatus: 'draft',
+      deterministicConditionGuidance: [
+        'A single keyword condition for laptop/MacBook/buy/recommendation is acceptable as a broad precondition.',
+        'Use semantic to distinguish buying advice from technical course setup or debugging.',
+      ],
+      requiredSemanticCondition:
+        'Add exactly one semantic condition. Its value must say: Detect laptop or consumer buying-advice posts. Match posts asking the community to recommend, choose, compare, or approve a laptop/specs purchase. Do not match technical setup/debugging, course-specific hardware requirements, or discussion where the laptop is incidental. Evidence cues must come from title, body, flair, URL/domain, and post type. If uncertain, choose needs_review.',
+      semanticMustInclude: ['buying', 'recommend', 'do not match', 'technical setup'],
+    };
+  }
+
+  if (/\b(ai slop|low[- ]effort ai|chatgpt dump|prompt dump|generated slop|llm-generated|ai-generated|large language models?|llms?|doomposting about ai|ai wrapper)\b/.test(source)) {
+    return {
+      name: 'low_effort_ai_content',
+      requiredStatus: 'draft',
+      deterministicConditionGuidance: [
+        'Do not claim AI-authorship detection.',
+        'Use exactly one semantic condition unless the moderator also provides an explicit domain, flair, post type, length, day, or time rule.',
+        'Do not draft a meme, shitpost, satire, or ragebait rule for this intent.',
+      ],
+      forbiddenConditionTypes: ['keyword', 'regex'],
+      requiredSemanticCondition:
+        'Add exactly one condition object with type "semantic". Its value must say: Detect low-effort AI or LLM content without claiming authorship detection. Match posts that are primarily generic, context-free, mass-produced, prompt-dump, pasted model output, repetitive AI doomposting, or AI-wrapper promotion with little original context. Do not match substantive discussion about AI tools, academic or technical AI discussion, disclosed AI use with meaningful context, or well-scoped examples. Evidence cues must come only from title, body, flair, URL/domain, and post type. If uncertain, choose needs_review or insufficient_context.',
+      semanticMustInclude: ['without claiming authorship', 'prompt', 'do not match', 'substantive discussion', 'evidence'],
+    };
+  }
+
+  if (/\b(live oa|live online assessment|online assessment questions?|interview questions?|exam questions?|codesignal|hackerrank)\b/.test(source)) {
+    return {
+      name: 'live_assessment_question_sharing',
+      requiredStatus: 'draft',
+      deterministicConditionGuidance: [
+        'Use assessment/interview/exam keywords only as weak preconditions when useful.',
+        'Do not rely only on keywords; practice and retrospective discussion can share the same words.',
+      ],
+      requiredSemanticCondition:
+        'Add exactly one semantic condition. Its value must explicitly include active/live assessment, exact questions, practice, retrospective, and general preparation. It must say: Detect requests to share, solve, or solicit active/live online assessment, interview, exam, or contest questions or answers. Match when the author appears to ask for or provide exact live assessment content. Do not match practice questions, retrospective discussion without exact questions, general preparation advice, or policy discussion. Evidence cues must come from title, body, flair, URL/domain, post type, and local datetime only. If live/active status is unclear, choose needs_review.',
+      semanticMustInclude: ['active/live', 'exact questions', 'practice', 'retrospective', 'general preparation'],
+    };
+  }
+
+  if (/\bout[- ]of[- ]scope\b|\boff[- ]topic\b|\bgeneral college\b|\br\/college\b|\br\/cscareerquestions\b/.test(source)) {
+    return {
+      name: 'out_of_scope',
+      requiredStatus: 'draft',
+      forbiddenConditionTypes: ['keyword', 'regex'],
+      requiredSemanticCondition:
+        'Add exactly one semantic condition. Its value must say: Detect posts that are outside this community scope. Match when the post is mainly general college life, housing, dorms, campus administration, or career/jobs/interview/recruiting advice without a college-level computer science education angle. Do not match posts about university-level computer science, computer engineering, software engineering, math, information science, coursework, internships as part of CS education, or related academic planning. Evidence cues must come from title, body, flair, URL/domain, post type, and local datetime only. Require strong evidence; if mixed or unclear, choose needs_review.',
+      semanticMustInclude: ['general college', 'career', 'computer science', 'strong evidence'],
+    };
+  }
+
+  if (/\b(respectful|don'?t be a jerk|offensive|harass|harassment|rude|civility|personal attacks?)\b/.test(source)) {
+    return {
+      name: 'respectful_engagement',
+      requiredStatus: 'draft',
+      forbiddenConditionTypes: ['keyword', 'regex'],
+      requiredSemanticCondition:
+        'Add exactly one semantic condition. Its value must say: Detect disrespectful or harassing engagement. Match personal attacks, hostile insults, harassment, demeaning language toward users or groups, or inflammatory replies. Do not match civil disagreement, criticism of ideas, criticism of companies/schools/classes, or good-faith debate without personal attacks. Evidence cues must come only from visible post title, body, flair, URL/domain, and post type. If uncertain, choose needs_review.',
+      semanticMustInclude: ['personal attacks', 'do not match', 'civil disagreement', 'evidence'],
+    };
+  }
+
+  if (/\b(amas?|ask me anything|surveys?|questionnaires?|hiring|referrals?|recruiting|participants?)\b/.test(source)) {
+    return {
+      name: 'approval_required_promo_recruitment',
+      requiredStatus: 'draft',
+      deterministicConditionGuidance: [
+        'A keyword condition can group obvious alternatives such as AMA, survey, questionnaire, hiring, recruiting, referral, participants, Google Forms, and Qualtrics.',
+        'Use semantic to distinguish approval-required recruiting or survey posts from discussion about those topics.',
+      ],
+      requiredSemanticCondition:
+        'Add exactly one semantic condition. Its value must say: Detect posts that need moderator approval because they are AMAs, surveys, questionnaires, research participant recruitment, hiring posts, recruiting posts, or referral requests/offers. Match when the author is trying to host an AMA, collect responses, recruit participants, recruit candidates, offer/request referrals, or hire for their own organization. Do not match discussion about surveys, job-search strategy, interview preparation, or career advice when the post is not recruiting or collecting responses. Evidence cues must come from title, body, flair, URL/domain, and post type. If uncertain, choose needs_review.',
+      semanticMustInclude: ['moderator approval', 'survey', 'hiring', 'referral', 'do not match'],
+    };
+  }
+
+  if (/\bresume|cv\b/.test(source) && /\b(sticky|megathread|standalone|review|roast|feedback|engineeringresumes)\b/.test(source)) {
+    return {
+      name: 'resume_megathread',
+      requiredStatus: 'draft',
+      deterministicConditionGuidance: [
+        'A single keyword condition for resume/CV is acceptable as a broad precondition.',
+        'Use semantic to separate standalone resume review requests from general resume advice.',
+      ],
+      requiredSemanticCondition:
+        'Add exactly one semantic condition. Its value must say: Detect standalone resume or CV review posts that should use the resume sticky or megathread. Match requests to review, roast, rate, critique, screen, or get feedback on a specific resume/CV. Do not match general resume advice, discussion of resume best practices, or examples used for teaching. Evidence cues must come from title, body, flair, URL/domain, and post type. If uncertain, choose needs_review.',
+      semanticMustInclude: ['resume', 'sticky', 'do not match', 'general resume advice'],
+    };
+  }
+
+  if (/\bamazon\b/.test(source)) {
+    return {
+      name: 'amazon_megathread_recommendation',
+      requiredStatus: 'draft',
+      requiredConditionTypes: ['keyword'],
+      allowedActions: ['log', 'flag'],
+      deterministicConditionGuidance: [
+        'Add one keyword condition for Amazon.',
+        'Because the provided policy is a recommendation rather than a hard requirement, prefer log or flag over filter unless the moderator explicitly asks for filtering.',
+      ],
+      modNote: 'The source policy says Amazon megathreads are recommended, not a hard requirement. Review the action before enabling.',
+    };
+  }
+
+  if (/\bspam|self[- ]promo|promotional|marketing|farm clicks?|sneak in an ad|affiliate|promo\b/.test(source)) {
+    return {
+      name: 'spam_or_promotion',
+      requiredStatus: 'draft',
+      forbiddenConditionTypes: ['regex'],
+      requiredSemanticCondition:
+        'Add exactly one semantic condition. Its value must say: Detect spam, self-promotion, promotional posting, affiliate/referral marketing, lead capture, traffic farming, or ads disguised as helpful resources. Match when the main purpose is promotion rather than community discussion. Do not match genuinely useful links with context, neutral resource sharing, or community-relevant discussion. Evidence cues must come from title, body, flair, URL/domain, and post type only. If uncertain, choose needs_review.',
+      semanticMustInclude: ['promotion', 'traffic', 'do not match', 'useful links'],
+    };
+  }
+
+  if (
+    /\b(lazy|low[- ]quality|low effort|empty[- ]body|title-only|hard to understand|no context|poll posts?)\b/.test(source) &&
+    !hasExplicitTitleLength &&
+    !hasExplicitBodyLength
+  ) {
+    return {
+      name: 'low_quality',
+      requiredStatus: 'draft',
+      deterministicConditionGuidance: [
+        'For broad low-quality rules, do not gate the whole rule on title/body length unless the moderator specifically asks for a measurable length rule.',
+        'Use semantic to evaluate missing context and effort.',
+      ],
+      forbiddenConditionTypes: ['regex', 'post_type', 'title_length', 'body_length'],
+      requiredSemanticCondition:
+        'Add exactly one semantic condition. Its value must say: Detect lazy or low-quality posts. Match posts that are hard to understand, title-only, empty-body, missing necessary context, context-free polls, vague "which should I choose" questions, or requests that show too little effort for useful answers. Do not match concise but specific questions, posts with enough context, or good-faith discussions. Evidence cues must come from title, body, flair, URL/domain, post type, and visible quality indicators. If uncertain, choose needs_review.',
+      semanticMustInclude: ['missing necessary context', 'too little effort', 'do not match', 'concise but specific'],
+    };
+  }
+
+  if (/\b(common questions?|already been answered|search the sub|repeated|repost|faq)\b/.test(source)) {
+    return {
+      name: 'common_questions',
+      requiredStatus: 'draft',
+      forbiddenConditionTypes: ['regex'],
+      requiredSemanticCondition:
+        'Add exactly one semantic condition. Its value must say: Detect likely common or repeated questions only from visible post content and configured rule examples; do not claim to search subreddit history. Match extremely generic FAQ-style questions or configured recurring topics with no new context. Do not match questions with new details, unusual context, or evidence that the author already searched and needs specific help. Evidence cues must come from title, body, flair, URL/domain, and post type. If uncertain or no configured recurring topic matches, choose needs_review or insufficient_context.',
+      semanticMustInclude: ['do not claim to search', 'faq', 'new context'],
+    };
+  }
+
+  if (/\b(college comparison|school comparison|university comparison|\bvs\.?\b|versus)\b/.test(source)) {
+    return {
+      name: 'college_comparison',
+      requiredStatus: 'draft',
+      forbiddenConditionTypes: ['regex'],
+      requiredSemanticCondition:
+        'Add exactly one semantic condition. Its value must say: Detect standalone college or university comparison posts. Match posts asking users to choose, rank, compare, or decide between schools/programs such as "A vs B" college decisions. Do not match discussion of one school, course-specific planning, transfer logistics with substantive context, or general admissions process questions that are not asking the subreddit to pick between schools. Evidence cues must come from title, body, flair, URL/domain, and post type. If uncertain, choose needs_review.',
+      semanticMustInclude: ['compare', 'choose', 'do not match', 'one school'],
+    };
+  }
+
+  if (/\b(personal projects?|project showcase|showcase megathread|own thread|modmail first|github|demo)\b/.test(source)) {
+    return {
+      name: 'personal_projects',
+      requiredStatus: 'draft',
+      requiredSemanticCondition:
+        'Add exactly one semantic condition. Its value must say: Detect personal project showcase or feedback posts that belong in the project showcase megathread unless approved. Match posts primarily showing, promoting, or asking for generic feedback on the author’s own project. Do not match substantive technical writeups, lessons learned, open-source discussion with clear community value, or projects that include enough depth to merit a standalone thread. Evidence cues must come from title, body, flair, URL/domain, and post type. If uncertain, choose needs_review.',
+      semanticMustInclude: ['project showcase', 'generic feedback', 'do not match', 'substantive technical'],
+    };
+  }
+
+  return undefined;
+}
+
 function rulePlanHint(request: RuleBuilderRequest): RulePlanHint | undefined {
   const source = [request.intent, request.subredditRule?.title, request.subredditRule?.description]
     .filter(Boolean)
@@ -503,45 +753,22 @@ function rulePlanHint(request: RuleBuilderRequest): RulePlanHint | undefined {
     return {
       name: 'timed_content_with_required_disclaimer',
       requiredStatus: 'draft',
-      forbiddenConditionTypes: ['day_of_week'],
+      forbiddenConditionTypes: ['keyword', 'regex', 'day_of_week'],
       deterministicConditionGuidance: [
-        'Use only broad preconditions for ragebait/satire/meme-like content, such as keyword, flair, or post_type when useful.',
+        'Do not add keyword or regex preconditions for ragebait/satire/meme-like content. They would miss posts that are semantically the same but do not use the exact words.',
         'Do not add day_of_week as a deterministic condition for this rule.',
         'Do not add a negated disclaimer regex as a deterministic condition for this rule.',
         `Reason: RulePilot deterministic conditions are ANDed, but this rule is violation = content matches AND (not ${allowedTiming.label} OR missing disclaimer).`,
       ],
       requiredSemanticCondition:
         `Add exactly one semantic condition. Its value must explicitly include "${allowedTiming.label}" and "disclaimer". It must say: Detect ragebait/satire-like posts. Match when the post is ragebait/satire/bait and either the local subreddit timing is not ${allowedTiming.label} or the post body does not end with a clear disclaimer. Do not match sincere posts, meta discussion, non-ragebait content, or ${allowedTiming.label} ragebait/satire posts that include a clear bottom-of-post disclaimer. Evidence cues must include title/body/flair and local datetime only. If the day or disclaimer placement is unclear, choose needs_review.`,
+      semanticMustInclude: [allowedTiming.label.toLowerCase(), 'disclaimer', 'local', 'do not match'],
       modNote:
         'RulePilot kept the timing/disclaimer exception inside the semantic rubric because RulePilot conditions are ANDed. Adding a day_of_week condition would miss one of the violation paths.',
     };
   }
-  if (/\b(ai slop|low[- ]effort ai|chatgpt dump|prompt dump|generated slop)\b/.test(source)) {
-    return {
-      name: 'low_effort_ai_content',
-      requiredStatus: 'draft',
-      deterministicConditionGuidance: [
-        'Use AI-related keywords only as weak preconditions when useful.',
-        'Do not use only deterministic conditions; this rule requires one semantic condition.',
-        'Do not draft a meme, shitpost, satire, or ragebait rule for this intent.',
-        'Do not claim AI-authorship detection.',
-      ],
-      requiredSemanticCondition:
-        'Add exactly one condition object with type "semantic". Its value must say: Detect low-effort AI content without claiming authorship detection. Match posts that are primarily generic, context-free, mass-produced, prompt-dump, pasted model output, or AI-wrapper spam with little original context. Do not match substantive discussion about AI tools, disclosed AI use with meaningful context, technical AI questions, or well-scoped examples. Evidence cues must come only from title, body, flair, URL/domain, and post type. If uncertain, choose needs_review or insufficient_context.',
-    };
-  }
-  if (/\b(live oa|live online assessment|online assessment questions?|interview questions?|exam questions?)\b/.test(source)) {
-    return {
-      name: 'live_assessment_question_sharing',
-      requiredStatus: 'draft',
-      deterministicConditionGuidance: [
-        'Use assessment/interview/exam keywords as preconditions when useful.',
-        'Do not rely only on keywords; practice and retrospective discussion can share the same words.',
-      ],
-      requiredSemanticCondition:
-        'Add exactly one semantic condition. Its value must explicitly include active/live assessment, exact questions, practice, retrospective, and general preparation. It must say: Detect requests to share, solve, or solicit active/live online assessment, interview, exam, or contest questions or answers. Match when the author appears to ask for or provide exact live assessment content. Do not match practice questions, retrospective discussion without exact questions, general preparation advice, or policy discussion. Evidence cues must come from title, body, flair, URL/domain, post type, and local datetime only. If live/active status is unclear, choose needs_review.',
-    };
-  }
+  const commonPlan = commonRulePlanHint(source, allowedTiming);
+  if (commonPlan) return commonPlan;
   return deterministicRulePlanHint(source, allowedTiming);
 }
 
@@ -558,6 +785,8 @@ export function buildRuleBuilderPayload(request: RuleBuilderRequest, retryInstru
       'Return needs_clarification when the moderator intent is too vague to draft one rule safely.',
       'Use deterministic conditions whenever possible: keyword, regex, post_type, flair, url_domain, title/body length, day_of_week, or time_window.',
       'Use semantic only for the narrow ambiguous part that deterministic conditions cannot express.',
+      'Do not add deterministic conditions merely as guessed synonyms for a semantic concept. A bad keyword/regex gate can hide real violations because all conditions are ANDed.',
+      'Regex is for explicit patterns such as required prefixes, title format, or a moderator-provided regex. For semantic concepts, use the semantic condition.',
       'Semantic condition values must be classifier-ready rubrics, not labels. Include what to match, what not to match, visible evidence cues, and what to do when uncertain.',
       'Use the commonModeratorIntentPlaybook when the moderator wording is close to one of those patterns. It is guidance, not a fixed list.',
       'For common intents, draft a conservative rule instead of asking for clarification. Ask clarification only when the audience, allowed exception, action, or target is required and unknowable.',
@@ -888,7 +1117,33 @@ function reviewDraftLogic(response: RuleBuilderResponse, request: RuleBuilderReq
     response.rule.conditions.some((condition) => condition.type === type)
   );
   if (forbiddenConditionType) {
-    return `This moderator intent should not use a ${forbiddenConditionType} deterministic condition because it would encode compound exception logic incorrectly. Put that part in the semantic rubric.`;
+    return `This moderator intent should not use a ${forbiddenConditionType} deterministic condition. It would either encode exception logic incorrectly or over-narrow a semantic rule. Put that part in the semantic rubric.`;
+  }
+  if (plan?.allowedActions?.length && !plan.allowedActions.includes(response.rule.action)) {
+    return `This moderator intent should use one of these actions: ${plan.allowedActions.join(', ')}.`;
+  }
+  if (plan?.requiredDays?.length) {
+    const dayCondition = response.rule.conditions.find((condition) => condition.type === 'day_of_week');
+    if (!dayCondition) {
+      return `This moderator intent requires a day_of_week condition with days=${plan.requiredDays.join(', ')}.`;
+    }
+    const missingDay = plan.requiredDays.find((day) =>
+      !dayCondition.days?.some((candidate) => candidate.toLowerCase() === day.toLowerCase())
+    );
+    if (missingDay) {
+      return `The day_of_week condition must include ${missingDay} in its days array.`;
+    }
+    if (plan.requiredDayNegate !== undefined && dayCondition.negate !== plan.requiredDayNegate) {
+      return `The day_of_week condition must set negate=${String(plan.requiredDayNegate)} for this "only allow" rule.`;
+    }
+  }
+  const semanticMustInclude = plan?.semanticMustInclude ?? [];
+  if (semanticMustInclude.length > 0 && semanticConditions.length > 0) {
+    const rubric = semanticConditions[0]?.value.toLowerCase() ?? '';
+    const missing = semanticMustInclude.find((needle) => !rubric.includes(needle.toLowerCase()));
+    if (missing) {
+      return `The semantic rubric is missing required RulePilot guidance: ${missing}.`;
+    }
   }
   const sourceText = sourceTextForRequest(request);
   const allowedTiming = allowedTimingFromSource(sourceText);
@@ -936,6 +1191,12 @@ function retryInstructionFor(error: RuleBuilderGenerationError, attempt: number,
       : '',
     plan?.forbiddenConditionTypes?.length
       ? `Do not include these condition types in the retry: ${plan.forbiddenConditionTypes.join(', ')}.`
+      : '',
+    plan?.allowedActions?.length
+      ? `Use one of these actions in the retry: ${plan.allowedActions.join(', ')}.`
+      : '',
+    plan?.requiredDays?.length
+      ? `The retry must include a day_of_week condition with days=[${plan.requiredDays.join(', ')}] and negate=${String(plan.requiredDayNegate)}.`
       : '',
     'Regenerate the rule from scratch as one strict JSON response.',
     'Do not repeat the invalid structure.',

@@ -45,15 +45,6 @@ function validDraft(overrides: Record<string, unknown> = {}): Record<string, unk
     category: 'format',
     conditions: [
       {
-        type: 'keyword',
-        field: 'title_and_body',
-        value: 'ragebait|satire|bait|hot take',
-        min: null,
-        max: null,
-        days: [],
-        negate: false,
-      },
-      {
         type: 'semantic',
         field: null,
         value:
@@ -236,11 +227,50 @@ describe('RulePilot AI Builder', () => {
       currentRules: [],
     });
     const text = JSON.stringify(payload);
-    const rulePlanHint = payload.rulePlanHint as { requiredSemanticCondition: string };
+    const rulePlanHint = payload.rulePlanHint as { requiredSemanticCondition: string; forbiddenConditionTypes: string[] };
 
     expect(text).toContain('not Wednesday OR missing disclaimer');
     expect(rulePlanHint.requiredSemanticCondition).toContain('explicitly include "Wednesday" and "disclaimer"');
     expect(text).toContain('Do not add day_of_week as a deterministic condition');
+    expect(rulePlanHint.forbiddenConditionTypes).toEqual(expect.arrayContaining(['keyword', 'regex', 'day_of_week']));
+  });
+
+  it('does not ask OpenAI to invent regex gates for subjective ragebait rules', () => {
+    const payload = buildRuleBuilderPayload({
+      mode: 'natural_language',
+      intent: 'only allow ragebait posts on Wednesdays if they put a disclaimer at the bottom of the post',
+      timezone: 'America/Chicago',
+      currentRules: [],
+    });
+    const rulePlanHint = payload.rulePlanHint as { forbiddenConditionTypes: string[]; requiredSemanticCondition: string };
+
+    expect(rulePlanHint.forbiddenConditionTypes).toEqual(expect.arrayContaining(['keyword', 'regex']));
+    expect(rulePlanHint.requiredSemanticCondition).toContain('Detect ragebait/satire-like posts');
+    expect(JSON.stringify(payload)).toContain('Do not add keyword or regex preconditions');
+  });
+
+  it.each([
+    ['Out of scope', 'out_of_scope', ['keyword', 'regex'], 'general college'],
+    ['Respectful engagement', 'respectful_engagement', ['keyword', 'regex'], 'personal attacks'],
+    ['Shitposts and memes except on Sundays', 'timed_subjective_content', ['keyword', 'regex'], 'shitposts'],
+    ['AI Large Language Models LLM-generated content is not allowed', 'low_effort_ai_content', ['keyword', 'regex'], 'without claiming authorship'],
+    ['College comparison posts are banned by default', 'college_comparison', ['regex'], 'college or university comparison'],
+  ])('creates a strict plan for common rule "%s"', (intent, planName, forbidden, semanticText) => {
+    const payload = buildRuleBuilderPayload({
+      mode: 'natural_language',
+      intent,
+      timezone: 'America/Chicago',
+      currentRules: [],
+    });
+    const rulePlanHint = payload.rulePlanHint as {
+      name: string;
+      requiredSemanticCondition: string;
+      forbiddenConditionTypes?: string[];
+    };
+
+    expect(rulePlanHint.name).toBe(planName);
+    expect(rulePlanHint.requiredSemanticCondition).toContain(semanticText);
+    expect(rulePlanHint.forbiddenConditionTypes ?? []).toEqual(expect.arrayContaining(forbidden));
   });
 
   it.each([
@@ -418,15 +448,6 @@ describe('RulePilot AI Builder', () => {
       .mockResolvedValueOnce(openAiDraftResponse(validDraft({
         conditions: [
           {
-            type: 'keyword',
-            field: 'title_and_body',
-            value: 'ragebait|satire',
-            min: null,
-            max: null,
-            days: [],
-            negate: false,
-          },
-          {
             type: 'semantic',
             field: null,
             value:
@@ -440,15 +461,6 @@ describe('RulePilot AI Builder', () => {
       })))
       .mockResolvedValueOnce(openAiDraftResponse(validDraft({
         conditions: [
-          {
-            type: 'keyword',
-            field: 'title_and_body',
-            value: 'ragebait|satire',
-            min: null,
-            max: null,
-            days: [],
-            negate: false,
-          },
           {
             type: 'semantic',
             field: null,
@@ -476,10 +488,72 @@ describe('RulePilot AI Builder', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     const secondBody = JSON.parse(fetchMock.mock.calls[1]?.[1]?.body as string);
-    expect(JSON.stringify(secondBody)).toContain('Wednesday/disclaimer exception');
+    expect(JSON.stringify(secondBody)).toContain('semantic rubric is missing required RulePilot guidance: wednesday');
     expect(response.status).toBe('draft');
     if (response.status === 'draft') {
       expect(response.rule.modNotes).toContain('RulePilot conditions are ANDed');
+    }
+  });
+
+  it('reprompts when a timed ragebait rule invents a regex synonym gate', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(openAiDraftResponse(validDraft({
+        conditions: [
+          {
+            type: 'regex',
+            field: 'title',
+            value: '(ragebait|satire|bait)',
+            min: null,
+            max: null,
+            days: [],
+            negate: false,
+          },
+          {
+            type: 'semantic',
+            field: null,
+            value:
+              'Detect ragebait posts. Match when the post is ragebait and either it is not Wednesday or it lacks a disclaimer. Do not match sincere posts. Evidence cues must come from title, body, flair, URL/domain, post type, and local datetime. If uncertain, choose needs_review.',
+            min: null,
+            max: null,
+            days: [],
+            negate: false,
+          },
+        ],
+      })))
+      .mockResolvedValueOnce(openAiDraftResponse(validDraft({
+        conditions: [
+          {
+            type: 'semantic',
+            field: null,
+            value:
+              'Detect ragebait posts. Match when the post is ragebait and either the local subreddit timing is not Wednesday or the post body does not end with a clear disclaimer. Do not match sincere posts, meta discussion, non-ragebait content, or Wednesday ragebait posts that include a clear bottom-of-post disclaimer. Evidence cues must come from title, body, flair, URL/domain, post type, and local datetime. If uncertain, choose needs_review.',
+            min: null,
+            max: null,
+            days: [],
+            negate: false,
+          },
+        ],
+      })));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await draftRuleWithOpenAI({
+      request: {
+        mode: 'natural_language',
+        intent: 'only allow ragebait posts on wednesdays if they put a disclaimer at the bottom of the post',
+        timezone: 'America/Chicago',
+        currentRules: [],
+      },
+      apiKey: 'test-key',
+      model: 'gpt-5-nano',
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const secondBody = JSON.parse(fetchMock.mock.calls[1]?.[1]?.body as string);
+    expect(JSON.stringify(secondBody)).toContain('regex');
+    expect(response.status).toBe('draft');
+    if (response.status === 'draft') {
+      expect(response.rule.conditions.some((condition) => condition.type === 'regex')).toBe(false);
+      expect(response.rule.conditions.some((condition) => condition.type === 'semantic')).toBe(true);
     }
   });
 
