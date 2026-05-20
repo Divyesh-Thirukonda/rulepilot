@@ -199,6 +199,9 @@ Think like we're basically giving them conditions (datetime = sunday [from datet
   - [x] keep threshold at the end of the Conditions section;
   - [x] make routing action the first field in the Actions section;
   - [x] align edit, delete, import, export, and draft buttons with Reddit-themed colors.
+  - [x] move import/export/subreddit-rule import controls outside and below the Rule Studio panel, centered.
+  - [x] replace the header `+` with a single Rule Studio `+` action below the rules that opens the AI Builder in a modal.
+  - [x] show generated drafts below the existing rule list so mods can manually edit the full rule before saving.
 
 ## P1: Common Rule Library
 

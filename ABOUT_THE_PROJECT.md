@@ -28,7 +28,7 @@ We built RulePilot as a Devvit app with a server-side moderation pipeline, Redis
 
 The classifier combines deterministic checks for obvious cases with optional OpenAI structured-output classification for ambiguous rule matches. Rules are stored per subreddit as editable `RuleConfigV2` objects, with conditions for keywords, regex, flair, post type, URL domains, title/body length, day of week, time windows, and semantic rubrics.
 
-On the moderator side, the dashboard shows recent cases, confidence, matched rules, actions, feedback, redirect guidance, and current rule configuration. Rule Studio lets mods create, edit, disable, import, export, simulate, and AI-draft rules, with clear separation between rule conditions and the actions RulePilot should take.
+On the moderator side, the dashboard shows recent cases, confidence, matched rules, actions, feedback, redirect guidance, and current rule configuration. Rule Studio lets mods create, edit, disable, import, export, simulate, and AI-draft rules, with clear separation between rule conditions and the actions RulePilot should take. New AI-drafted rules start from a single plus action that opens a focused builder modal, then returns the generated draft to the full editor for moderator review.
 
 ## Challenges we ran into
 
@@ -54,7 +54,7 @@ We also learned that “AI for moderation” works best when it is narrow, trans
 
 ## What's next for RulePilot
 
-Next, we want to complete live playtesting, collect moderator feedback, and tune the LLM prompts for the r/csMajors starter pack against more posts.
+Next, we want to complete live playtesting, collect moderator feedback, and tune the LLM prompts for the r/csMajors starter pack against more posts. Some false-positive patterns need to be learned incrementally from moderator feedback instead of only through static examples.
 
 After that, we want to add more reusable rule packs for education and career communities, improve the AI Builder with better clarification flows, and expand the dashboard with filters, sorting, and trend views.
 

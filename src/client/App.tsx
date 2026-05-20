@@ -757,18 +757,11 @@ function RuleEditor({ initial, onSave, onCancel, saving, timezone }: { initial: 
   );
 }
 
-function RuleBuilder({ onDraft, onDrafts }: { onDraft: (rule: RuleConfigV2) => void; onDrafts: (rules: RuleConfigV2[]) => void }) {
+function RuleBuilder({ onDraft, onClose }: { onDraft: (rule: RuleConfigV2) => void; onClose: () => void }) {
   const [intent, setIntent] = useState('');
   const [loading, setLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [questions, setQuestions] = useState<string[]>([]);
-  const [subredditRulesImported, setSubredditRulesImported] = useState(() => {
-    try {
-      return window.localStorage.getItem(SUBREDDIT_RULE_IMPORT_KEY) === 'true';
-    } catch {
-      return false;
-    }
-  });
 
   const handleBuilderResponse = async (response: Response): Promise<RuleBuilderResponse> => {
     const body = await response.json().catch(() => undefined) as (RuleBuilderResponse & ErrorResponse) | undefined;
@@ -797,37 +790,7 @@ function RuleBuilder({ onDraft, onDrafts }: { onDraft: (rule: RuleConfigV2) => v
       } else {
         onDraft(result.rule);
         setIntent('');
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(null);
-    }
-  };
-
-  const importSubredditRules = async () => {
-    setLoading('import');
-    setError(null);
-    setQuestions([]);
-    try {
-      const response = await fetch('/api/rules/v2/import-subreddit-rules', { method: 'POST' });
-      const body = await response.json().catch(() => undefined) as { drafts?: RuleConfigV2[]; errors?: string[]; error?: string } | undefined;
-      if (!response.ok) {
-        throw new Error(body?.error ?? `Import failed (${response.status})`);
-      }
-      const drafts = body?.drafts ?? [];
-      if (drafts.length === 0) {
-        throw new Error(body?.errors?.join(' ') || 'No draftable subreddit rules were returned.');
-      }
-      onDrafts(drafts);
-      setSubredditRulesImported(true);
-      try {
-        window.localStorage.setItem(SUBREDDIT_RULE_IMPORT_KEY, 'true');
-      } catch {
-        // Non-critical in embedded webviews that block localStorage.
-      }
-      if (body?.errors?.length) {
-        setQuestions(body.errors.slice(0, 3));
+        onClose();
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -843,9 +806,7 @@ function RuleBuilder({ onDraft, onDrafts }: { onDraft: (rule: RuleConfigV2) => v
           <h3>RulePilot AI Builder</h3>
           <span>Generate disabled drafts for moderators to review, simulate, and save.</span>
         </div>
-        {!subredditRulesImported ? (
-          <button className="secondary-button" disabled={loading !== null} onClick={() => void importSubredditRules()} type="button">Import subreddit rules</button>
-        ) : null}
+        <button className="secondary-button" disabled={loading !== null} onClick={onClose} type="button">Close</button>
       </div>
       <div className="builder-prompt-row">
         <label className="editor-field full">
@@ -859,6 +820,16 @@ function RuleBuilder({ onDraft, onDrafts }: { onDraft: (rule: RuleConfigV2) => v
       {questions.length ? <div className="builder-note"><strong>Needs clarification</strong><ul>{questions.map((question) => <li key={question}>{question}</li>)}</ul></div> : null}
       {error ? <div className="rule-studio-error" role="alert">{error}</div> : null}
     </section>
+  );
+}
+
+function RuleBuilderModal({ onDraft, onClose }: { onDraft: (rule: RuleConfigV2) => void; onClose: () => void }) {
+  return (
+    <div className="modal-backdrop" onClick={onClose} role="presentation">
+      <section className="rule-builder-dialog" aria-label="Create a RulePilot rule" onClick={(event) => event.stopPropagation()}>
+        <RuleBuilder onDraft={onDraft} onClose={onClose} />
+      </section>
+    </div>
   );
 }
 
@@ -880,20 +851,22 @@ function RuleStudioRow({ rule, onEdit, onToggle, onDelete }: { rule: RuleConfigV
   );
 }
 
-function RuleStudio({ rules, refresh, timezone, createRequest }: { rules: RuleConfigV2[]; refresh: () => Promise<void>; timezone: string; createRequest: number }) {
+function RuleStudio({ rules, refresh, timezone }: { rules: RuleConfigV2[]; refresh: () => Promise<void>; timezone: string }) {
   const [localRules, setLocalRules] = useState<RuleConfigV2[]>(rules);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [creating, setCreating] = useState(false);
   const [drafts, setDrafts] = useState<RuleConfigV2[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [needsRefresh, setNeedsRefresh] = useState(false);
-
-  useEffect(() => {
-    if (createRequest === 0) return;
-    setCreating(true);
-    setEditingId(null);
-  }, [createRequest]);
+  const [builderOpen, setBuilderOpen] = useState(false);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [subredditRulesImported, setSubredditRulesImported] = useState(() => {
+    try {
+      return window.localStorage.getItem(SUBREDDIT_RULE_IMPORT_KEY) === 'true';
+    } catch {
+      return false;
+    }
+  });
 
   useEffect(() => {
     setLocalRules(rules);
@@ -938,17 +911,6 @@ function RuleStudio({ rules, refresh, timezone, createRequest }: { rules: RuleCo
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
-  };
-  const handleSaveNew = async (form: Partial<RuleConfigV2>) => {
-    setError(null);
-    setSaving(true);
-    try {
-      const response = await fetch('/api/rules/v2', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) });
-      await applyRuleMutation(response, 'Could not create rule');
-      setCreating(false);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally { setSaving(false); }
   };
   const handleSaveDraft = async (draftId: string, form: Partial<RuleConfigV2>) => {
     setError(null);
@@ -1007,56 +969,97 @@ function RuleStudio({ rules, refresh, timezone, createRequest }: { rules: RuleCo
     };
     input.click();
   };
+  const importSubredditRules = async () => {
+    setActionLoading('subreddit-import');
+    setError(null);
+    try {
+      const response = await fetch('/api/rules/v2/import-subreddit-rules', { method: 'POST' });
+      const body = await response.json().catch(() => undefined) as { drafts?: RuleConfigV2[]; errors?: string[]; error?: string } | undefined;
+      if (!response.ok) {
+        throw new Error(body?.error ?? `Import failed (${response.status})`);
+      }
+      const importedDrafts = body?.drafts ?? [];
+      if (importedDrafts.length === 0) {
+        throw new Error(body?.errors?.join(' ') || 'No draftable subreddit rules were returned.');
+      }
+      setDrafts((current) => [...current, ...importedDrafts]);
+      setEditingId(null);
+      setBuilderOpen(false);
+      setSubredditRulesImported(true);
+      try {
+        window.localStorage.setItem(SUBREDDIT_RULE_IMPORT_KEY, 'true');
+      } catch {
+        // Non-critical in embedded webviews that block localStorage.
+      }
+      if (body?.errors?.length) {
+        setError(body.errors.slice(0, 3).join(' '));
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setActionLoading(null);
+    }
+  };
+  const openRuleBuilder = () => {
+    setEditingId(null);
+    setBuilderOpen(true);
+  };
 
   return (
-    <section className="rule-studio">
-      <div className="rs-header">
-        <div><h2>Rule Studio</h2><span>{localRules.length} rules</span></div>
-      </div>
-      {error ? <div className="rule-studio-error" role="alert">{error}</div> : null}
-      {needsRefresh ? <div className="rule-studio-sync"><span>Rule changes saved.</span><button className="secondary-button" type="button" onClick={() => void refreshFromServer()}>Refresh to load latest dashboard data</button></div> : null}
-      <RuleBuilder
-        onDraft={(rule) => {
-          setCreating(false);
-          setEditingId(null);
-          setDrafts((items) => [rule, ...items]);
-        }}
-        onDrafts={(items) => {
-          setCreating(false);
-          setEditingId(null);
-          setDrafts((current) => [...items, ...current]);
-        }}
-      />
-      {creating && <RuleEditor initial={emptyRule()} onSave={(f) => void handleSaveNew(f)} onCancel={() => setCreating(false)} saving={saving} timezone={timezone} />}
-      <div className="rs-list">
-        {drafts.map((draft) => (
-          <div key={draft.id}>
-            <div className="draft-banner">
-              <strong>Generated draft</strong>
-              <span>Review, simulate, and save. It will stay disabled until a moderator enables it.</span>
+    <div className="rule-studio-wrap">
+      <section className="rule-studio">
+        <div className="rs-header">
+          <div><h2>Rule Studio</h2><span>{localRules.length} rules</span></div>
+        </div>
+        {error ? <div className="rule-studio-error" role="alert">{error}</div> : null}
+        {needsRefresh ? <div className="rule-studio-sync"><span>Rule changes saved.</span><button className="secondary-button" type="button" onClick={() => void refreshFromServer()}>Refresh to load latest dashboard data</button></div> : null}
+        <div className="rs-list">
+          {localRules.map((rule) => (
+            <div key={rule.id}>
+              <RuleStudioRow rule={rule} onEdit={() => { setEditingId(rule.id); }} onToggle={(e) => void handleToggle(rule.id, e)} onDelete={() => void handleDelete(rule.id)} />
+              {editingId === rule.id && <RuleEditor initial={rule} onSave={(f) => void handleSaveEdit(rule.id, f)} onCancel={() => setEditingId(null)} saving={saving} timezone={timezone} />}
             </div>
-            <RuleEditor
-              initial={draft}
-              onSave={(form) => void handleSaveDraft(draft.id, form)}
-              onCancel={() => setDrafts((items) => items.filter((item) => item.id !== draft.id))}
-              saving={saving}
-              timezone={timezone}
-            />
-          </div>
-        ))}
-        {localRules.map((rule) => (
-          <div key={rule.id}>
-            <RuleStudioRow rule={rule} onEdit={() => { setEditingId(rule.id); setCreating(false); }} onToggle={(e) => void handleToggle(rule.id, e)} onDelete={() => void handleDelete(rule.id)} />
-            {editingId === rule.id && <RuleEditor initial={rule} onSave={(f) => void handleSaveEdit(rule.id, f)} onCancel={() => setEditingId(null)} saving={saving} timezone={timezone} />}
-          </div>
-        ))}
-        {localRules.length === 0 && <div className="empty-panel"><strong>No rules yet</strong><span>Create a new rule or import an existing RulePilot rule file.</span></div>}
+          ))}
+          {drafts.map((draft) => (
+            <div key={draft.id}>
+              <div className="draft-banner">
+                <strong>Generated draft</strong>
+                <span>Review, simulate, and save. It will stay disabled until a moderator enables it.</span>
+              </div>
+              <RuleEditor
+                initial={draft}
+                onSave={(form) => void handleSaveDraft(draft.id, form)}
+                onCancel={() => setDrafts((items) => items.filter((item) => item.id !== draft.id))}
+                saving={saving}
+                timezone={timezone}
+              />
+            </div>
+          ))}
+          {localRules.length === 0 && drafts.length === 0 && <div className="empty-panel"><strong>No rules yet</strong><span>Create a new rule or import an existing RulePilot rule file.</span></div>}
+        </div>
+        <div className="rs-create-row">
+          <button aria-label="Draft a new rule" className="primary-button icon-button create-rule-button" onClick={openRuleBuilder} type="button">
+            <svg aria-hidden="true" viewBox="0 0 24 24">
+              <path d="M12 5v14" />
+              <path d="M5 12h14" />
+            </svg>
+          </button>
+        </div>
+      </section>
+      <div className="rs-footer-actions" aria-label="Rule Studio actions">
+        {!subredditRulesImported ? (
+          <button className="secondary-button" disabled={actionLoading !== null || saving} onClick={() => void importSubredditRules()} type="button">
+            {actionLoading === 'subreddit-import' ? 'Importing subreddit rules' : 'Import subreddit rules'}
+          </button>
+        ) : null}
+        <button className="secondary-button" disabled={actionLoading !== null || saving} onClick={handleImport} type="button">Import</button>
+        <button className="secondary-button" disabled={actionLoading !== null || saving} onClick={() => void handleExport()} type="button">Export</button>
       </div>
-      <div className="rs-footer-actions">
-        <button className="secondary-button" onClick={handleImport}>Import</button>
-        <button className="secondary-button" onClick={() => void handleExport()}>Export</button>
-      </div>
-    </section>
+      {builderOpen ? <RuleBuilderModal onClose={() => setBuilderOpen(false)} onDraft={(rule) => {
+        setEditingId(null);
+        setDrafts((items) => [...items, rule]);
+      }} /> : null}
+    </div>
   );
 }
 
@@ -1064,13 +1067,7 @@ function RuleStudio({ rules, refresh, timezone, createRequest }: { rules: RuleCo
 
 function Dashboard({ cases, stats, settings, rules, refresh }: { cases: CaseRecord[]; stats: DashboardStats; settings: RulePilotSettings; rules: RuleConfigV2[]; refresh: () => Promise<void> }) {
   const [tab, setTab] = useState<DashboardTab>('cases');
-  const [createRuleRequest, setCreateRuleRequest] = useState(0);
   const newest = useMemo(() => cases.slice(0, 25), [cases]);
-
-  const startNewRule = () => {
-    setTab('rule-studio');
-    setCreateRuleRequest((value) => value + 1);
-  };
 
   return (
     <main className="app-shell">
@@ -1101,12 +1098,6 @@ function Dashboard({ cases, stats, settings, rules, refresh }: { cases: CaseReco
             </button>
             <SettingsPopover settings={settings} />
           </div>
-          <button aria-label="Create new rule" className="primary-button icon-button create-rule-button" onClick={startNewRule} type="button">
-            <svg aria-hidden="true" viewBox="0 0 24 24">
-              <path d="M12 5v14" />
-              <path d="M5 12h14" />
-            </svg>
-          </button>
         </div>
       </header>
       {tab === 'cases' && (
@@ -1117,7 +1108,7 @@ function Dashboard({ cases, stats, settings, rules, refresh }: { cases: CaseReco
           </div>
         </>
       )}
-      {tab === 'rule-studio' && <RuleStudio rules={rules} refresh={refresh} timezone={settings.timezone} createRequest={createRuleRequest} />}
+      {tab === 'rule-studio' && <RuleStudio rules={rules} refresh={refresh} timezone={settings.timezone} />}
     </main>
   );
 }
