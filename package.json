@@ -13,7 +13,9 @@
     "login": "devvit login",
     "test": "vitest run",
     "test:demo": "vitest run src/server/rule-builder.test.ts src/server/classifier.test.ts src/server/heuristics.test.ts src/server/openai.test.ts",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "test:ai-builder:live": "RULEPILOT_RUN_LIVE_OPENAI=1 vitest run src/server/rule-builder.live.test.ts --testTimeout=120000 --maxConcurrency=2",
+    "test:classification:live": "RULEPILOT_RUN_LIVE_OPENAI=1 vitest run src/server/openai.live.test.ts --testTimeout=120000"
   },
   "engines": {
     "node": ">=22.2.0"

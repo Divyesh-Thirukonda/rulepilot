@@ -546,6 +546,12 @@ a:hover {
   margin-top: 4px;
 }
 
+.detail-section li span,
+.action-reason {
+  color: var(--rp-neutral-content-weak);
+  display: block;
+}
+
 .routing-panel {
   display: grid;
   gap: 10px;
@@ -822,6 +828,7 @@ a:hover {
   font-weight: 600;
   line-height: 1.4;
   padding: 10px 12px;
+  white-space: pre-line;
 }
 
 .rule-studio-sync {

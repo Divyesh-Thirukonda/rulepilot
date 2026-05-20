@@ -2,6 +2,7 @@ import { reddit } from '@devvit/web/server';
 import type { Post } from '@devvit/web/server';
 
 import { getRuleById } from '../shared/rules';
+import { suggestedActionForRoutingAction } from '../shared/actions';
 import type {
   CaseAction,
   CaseRecord,
@@ -28,6 +29,22 @@ function textEvidence(result: ClassificationResult): string {
   return `${result.rationale} ${result.matchedSignals.join(' ')}`.toLowerCase();
 }
 
+function alignSuggestedActionWithRule(result: ClassificationResult, rule: RuleConfigV2): ClassificationResult {
+  if (result.decision === 'allowed') {
+    return { ...result, suggestedAction: 'allow' };
+  }
+  if (result.decision === 'uncertain' || result.decision === 'insufficient_context') {
+    return { ...result, suggestedAction: 'log' };
+  }
+  if (result.decision === 'needs_review' && rule.action === 'filter') {
+    return { ...result, suggestedAction: 'flag_for_review' };
+  }
+  return {
+    ...result,
+    suggestedAction: suggestedActionForRoutingAction(rule.action),
+  };
+}
+
 export function calibrateLlmResult(result: ClassificationResult, rules: RuleConfigV2[]): ClassificationResult {
   if (result.source !== 'llm') {
     return result;
@@ -46,32 +63,32 @@ export function calibrateLlmResult(result: ClassificationResult, rules: RuleConf
   }
 
   if (rule.id === 'shitposts-and-memes' && result.ruleId === rule.id && result.matchedSignals.length > 0) {
-    return {
+    return alignSuggestedActionWithRule({
       ...result,
       confidence: Math.max(result.confidence, 0.82),
-    };
+    }, rule);
   }
 
   if (rule.id === 'out-of-scope' && result.decision === 'violation' && result.confidence < 0.86) {
-    return {
+    return alignSuggestedActionWithRule({
       ...result,
       decision: 'needs_review',
       confidence: Math.min(result.confidence, rule.threshold - 0.01),
       suggestedAction: 'flag_for_review',
       rationale: `${result.rationale} RulePilot downgraded this because out-of-scope decisions require strong evidence.`,
       matchedSignals: [...result.matchedSignals, 'calibration: out-of-scope needs stronger evidence'],
-    };
+    }, rule);
   }
 
   if (rule.id === 'low-quality' && result.decision === 'violation') {
-    return {
+    return alignSuggestedActionWithRule({
       ...result,
       decision: 'needs_review',
       confidence: Math.min(result.confidence, rule.threshold - 0.01),
       suggestedAction: 'flag_for_review',
       rationale: `${result.rationale} RulePilot downgraded low-quality classification to moderator review by default.`,
       matchedSignals: [...result.matchedSignals, 'calibration: low-quality defaults to review'],
-    };
+    }, rule);
   }
 
   if (rule.id === 'ai-llms') {
@@ -91,7 +108,7 @@ export function calibrateLlmResult(result: ClassificationResult, rules: RuleConf
     }
   }
 
-  return result;
+  return alignSuggestedActionWithRule(result, rule);
 }
 
 export async function classifyPost(input: PostInput, dependencies: ScanDependencies): Promise<ClassificationResult> {
@@ -119,6 +136,7 @@ export async function classifyPost(input: PostInput, dependencies: ScanDependenc
         apiKey: dependencies.openAiApiKey,
         model: dependencies.settings.openAiModel,
         timezone: dependencies.settings.timezone,
+        now: dependencies.now,
       });
       if (!llm.ruleId || rules.some((rule) => rule.id === llm.ruleId)) {
         return calibrateLlmResult(llm, rules);

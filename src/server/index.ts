@@ -29,7 +29,7 @@ import type {
   SubredditRuleInput,
 } from '../shared/types';
 import { buildAutomoderatorCase } from './automod';
-import { buildFallbackRuleDraft, draftRuleWithOpenAI } from './rule-builder';
+import { draftRuleWithOpenAI, ruleBuilderErrorResponse } from './rule-builder';
 import { scanPost } from './classifier';
 import { enabledRulesFromList } from './policy';
 import { getOpenAiApiKey, getRulePilotSettings } from './settings';
@@ -805,7 +805,15 @@ app.post('/api/rules/v2/ai-draft', async (c) => {
   }
   const request = ruleBuilderRequest(body, currentRules, settings.timezone);
   if (body.mode !== 'template' && !apiKey) {
-    return c.json(buildFallbackRuleDraft(request, 'OpenAI API key is not configured'));
+    return c.json({
+      error: 'OpenAI API key is not configured for RulePilot AI Builder.',
+      code: 'missing_openai_api_key',
+      details: [
+        'The AI Builder uses a real OpenAI structured-output call and does not create local fallback drafts.',
+        'Set the OpenAI API key in the Devvit app settings before using natural-language or subreddit-rule drafting.',
+      ],
+      retryable: false,
+    }, 400);
   }
 
   let draft: RuleBuilderResponse;
@@ -814,9 +822,11 @@ app.post('/api/rules/v2/ai-draft', async (c) => {
       request,
       apiKey: apiKey ?? '',
       model: settings.openAiModel,
+      validateDraft: validateRuleInput,
     });
   } catch (error) {
-    return c.json({ error: error instanceof Error ? error.message : String(error) }, 502);
+    const response = ruleBuilderErrorResponse(error);
+    return c.json(response.body, response.status);
   }
 
   if (draft.status === 'draft') {
@@ -860,6 +870,7 @@ app.post('/api/rules/v2/import-subreddit-rules', async (c) => {
         }, currentRules, settings.timezone),
         apiKey,
         model: settings.openAiModel,
+        validateDraft: validateRuleInput,
       });
       if (response.status === 'draft') {
         const validationError = validateRuleInput(response.rule);
@@ -878,7 +889,8 @@ app.post('/api/rules/v2/import-subreddit-rules', async (c) => {
       errors,
     });
   } catch (error) {
-    return c.json({ error: error instanceof Error ? error.message : String(error) }, 502);
+    const response = ruleBuilderErrorResponse(error);
+    return c.json(response.body, response.status);
   }
 });
 

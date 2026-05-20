@@ -15,7 +15,7 @@ import './styles.css';
 
 type CasesResponse = { cases: CaseRecord[]; stats: DashboardStats; settings: RulePilotSettings };
 type RulesResponse = { rules: RuleConfigV2[] };
-type ErrorResponse = { error?: string };
+type ErrorResponse = { error?: string; details?: string[]; code?: string; retryable?: boolean };
 
 type LoadState =
   | { status: 'loading' }
@@ -457,13 +457,15 @@ function CaseDetail({ item, rules, onSaved }: { item: CaseRecord | undefined; ru
   if (!item) return <aside className="detail-panel empty-detail" aria-label="Case detail"><strong>No cases selected</strong><span>New scans will appear here after RulePilot reviews posts.</span></aside>;
   const href = item.postPermalink ? new URL(item.postPermalink, 'https://www.reddit.com').toString() : undefined;
   const signals = item.result.matchedSignals.length ? item.result.matchedSignals : ['No deterministic signal recorded'];
+  const evidence = item.result.evidence ?? [];
   const matchedRule = item.result.ruleId ? rules.find((rule) => rule.id === item.result.ruleId) : undefined;
   return (
     <aside className="detail-panel" aria-label="Case detail">
       <div className="detail-header"><span className={`status-pill action-${item.action}`}>{actionLabels[item.action]}</span><span className={`feedback-pill ${item.feedback ? `feedback-${item.feedback}` : 'feedback-pending'}`}>{item.feedback ? feedbackLabels[item.feedback] : 'Pending'}</span></div>
       <h2>{item.postTitle}</h2>
       <div className="detail-meta"><span>{ruleTitle(rules, item.result.ruleId)}</span><span>{pct(item.result.confidence)}</span><span>{formatTime(item.updatedAt)}</span></div>
-      <section className="detail-section"><h3>Rationale</h3><p>{item.result.rationale}</p></section>
+      <section className="detail-section"><h3>Rationale</h3><p>{item.result.rationale}</p>{item.result.actionReason ? <p className="action-reason">{item.result.actionReason}</p> : null}</section>
+      {evidence.length ? <section className="detail-section"><h3>Evidence</h3><ul>{evidence.map((evidenceItem, index) => <li key={`${evidenceItem.field}-${index}`}><strong>{evidenceItem.field}</strong>{evidenceItem.excerpt ? `: ${evidenceItem.excerpt}` : ''}<span>{evidenceItem.note}</span></li>)}</ul></section> : null}
       <section className="detail-section"><h3>Signals</h3><ul>{signals.map((s) => <li key={s}>{s}</li>)}</ul></section>
       <RoutingPanel item={item} rule={matchedRule} />
       <RepairPanel item={item} rule={matchedRule} />
@@ -783,7 +785,9 @@ function RuleBuilder({ onDraft, onClose }: { onDraft: (rule: RuleConfigV2) => vo
   const handleBuilderResponse = async (response: Response): Promise<RuleBuilderResponse> => {
     const body = await response.json().catch(() => undefined) as (RuleBuilderResponse & ErrorResponse) | undefined;
     if (!response.ok) {
-      throw new Error(body?.error ?? `Rule Builder failed (${response.status})`);
+      const details = body?.details?.filter(Boolean) ?? [];
+      const suffix = details.length ? `\n${details.map((detail) => `- ${detail}`).join('\n')}` : '';
+      throw new Error(`${body?.error ?? `Rule Builder failed (${response.status})`}${suffix}`);
     }
     if (!body) {
       throw new Error('Rule Builder returned an empty response.');

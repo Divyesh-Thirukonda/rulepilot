@@ -1,12 +1,76 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
-  buildFallbackRuleDraft,
   buildRuleBuilderPayload,
   buildTemplateRuleDraft,
   draftRuleWithOpenAI,
   parseRuleBuilderResponse,
+  RuleBuilderGenerationError,
 } from './rule-builder';
+
+function openAiDraftResponse(draft: Record<string, unknown>): Response {
+  return new Response(JSON.stringify({
+    output_text: JSON.stringify({
+      status: 'draft',
+      questions: [],
+      draft,
+    }),
+  }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+function openAiClarificationResponse(questions: string[]): Response {
+  return new Response(JSON.stringify({
+    output_text: JSON.stringify({
+      status: 'needs_clarification',
+      questions,
+      draft: null,
+    }),
+  }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+function validDraft(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    title: 'Sunday ragebait disclaimer rule',
+    description: 'Flag satire or ragebait posts unless the post satisfies the Sunday disclaimer requirement.',
+    examples: ['Hot take: this class is fake and everyone should rage in the comments'],
+    negativeExamples: ['Serious discussion about satire rules'],
+    action: 'flag',
+    threshold: 0.76,
+    category: 'format',
+    conditions: [
+      {
+        type: 'keyword',
+        field: 'title_and_body',
+        value: 'ragebait|satire|bait|hot take',
+        min: null,
+        max: null,
+        days: [],
+        negate: false,
+      },
+      {
+        type: 'semantic',
+        field: null,
+        value:
+          'Detect satire or ragebait posts for this rule. Match when the post is satire or ragebait and either it is not Sunday in the subreddit timezone or it lacks a clear disclaimer at the bottom of the body. Do not match sincere discussion, meta discussion about the rule, or Sunday satire/ragebait posts with a visible bottom disclaimer. Evidence cues must come from title, body, flair, URL/domain, post type, and local datetime. If uncertain, choose needs_review.',
+        min: null,
+        max: null,
+        days: [],
+        negate: false,
+      },
+    ],
+    redirectTargetType: null,
+    redirectTarget: null,
+    redirectTemplate: null,
+    modNotes: null,
+    ...overrides,
+  };
+}
 
 describe('RulePilot AI Builder', () => {
   afterEach(() => {
@@ -179,10 +243,12 @@ describe('RulePilot AI Builder', () => {
     expect(text).toContain('Buying advice, laptop recommendations, or setup questions belong elsewhere');
   });
 
-  it('falls back to a disabled local draft instead of surfacing an OpenAI failure', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response('upstream unavailable', { status: 500 })));
+  it('throws a detailed error instead of creating a local fallback when OpenAI fails', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      error: { message: 'upstream overloaded', type: 'server_error' },
+    }), { status: 500 })));
 
-    const response = await draftRuleWithOpenAI({
+    await expect(draftRuleWithOpenAI({
       request: {
         mode: 'natural_language',
         intent: 'only allow ragebait posts on sundays and if they put a disclaimer at the bottom of the post',
@@ -191,53 +257,152 @@ describe('RulePilot AI Builder', () => {
       },
       apiKey: 'test-key',
       model: 'gpt-5-nano',
+    })).rejects.toMatchObject({
+      code: 'openai_http_500',
+      details: expect.arrayContaining([expect.stringContaining('Attempt 4')]),
+    });
+  });
+
+  it('retries a transient OpenAI error and returns the real structured draft', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response('temporarily unavailable', { status: 503 }))
+      .mockResolvedValueOnce(openAiDraftResponse(validDraft()));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await draftRuleWithOpenAI({
+      request: {
+        mode: 'natural_language',
+        intent: 'only allow ragebait posts on sundays if they put a disclaimer at the bottom of the post',
+        timezone: 'America/Chicago',
+        currentRules: [],
+      },
+      apiKey: 'test-key',
+      model: 'gpt-5-nano',
     });
 
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(response.status).toBe('draft');
     if (response.status === 'draft') {
       expect(response.rule.enabled).toBe(false);
-      expect(response.rule.title).toBe('Timed satire and ragebait rule');
-      expect(response.rule.conditions.some((condition) => condition.type === 'day_of_week' && condition.negate)).toBe(true);
-      expect(response.rule.conditions.some((condition) => condition.type === 'regex' && condition.field === 'body' && condition.negate)).toBe(true);
-      expect(response.rule.conditions.some((condition) => condition.type === 'semantic' && condition.value.includes('disclaimer'))).toBe(true);
-      expect(response.rule.modNotes).toContain('Fallback draft');
+      expect(response.rule.conditions.some((condition) => condition.type === 'semantic')).toBe(true);
+      expect(response.rule.conditions.some((condition) => condition.value.includes('disclaimer'))).toBe(true);
     }
   });
 
-  it('can create conservative fallback drafts for common demo prompts', () => {
-    const prompts = [
-      'only allow ragebait posts on sundays and if they put a disclaimer at the bottom of the post',
-      'no AI slop',
-      'require approval for surveys',
-      'route resume posts to a megathread',
-      'no live OA questions',
-      'no homework answer requests without effort',
-      'no hiring or referral posts without mod approval',
-      'flag rude posts',
-      'route laptop buying advice elsewhere',
-      'no low effort title only questions',
-      'no spoiler posts without title tags',
-      'flag off topic career-only posts',
-      'personal project showcases must include technical detail',
-      'no self promotion spam',
-      'only allow memes on Sundays',
-    ];
+  it('reprompts when generated deterministic conditions encode exception logic as an AND trap', async () => {
+    const unsafeDraft = validDraft({
+      conditions: [
+        {
+          type: 'keyword',
+          field: 'title_and_body',
+          value: 'ragebait|satire',
+          min: null,
+          max: null,
+          days: [],
+          negate: false,
+        },
+        {
+          type: 'day_of_week',
+          field: null,
+          value: '',
+          min: null,
+          max: null,
+          days: ['Sunday'],
+          negate: true,
+        },
+        {
+          type: 'regex',
+          field: 'body',
+          value: '\\b(disclaimer|satire|parody)\\b',
+          min: null,
+          max: null,
+          days: [],
+          negate: true,
+        },
+        {
+          type: 'semantic',
+          field: null,
+          value: 'ragebait',
+          min: null,
+          max: null,
+          days: [],
+          negate: false,
+        },
+      ],
+    });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(openAiDraftResponse(unsafeDraft))
+      .mockResolvedValueOnce(openAiDraftResponse(validDraft()));
+    vi.stubGlobal('fetch', fetchMock);
 
-    for (const intent of prompts) {
-      const response = buildFallbackRuleDraft({
+    const response = await draftRuleWithOpenAI({
+      request: {
         mode: 'natural_language',
-        intent,
+        intent: 'only allow ragebait posts on sundays if they put a disclaimer at the bottom of the post',
         timezone: 'America/Chicago',
         currentRules: [],
-      });
-      expect(response.status, intent).toBe('draft');
-      if (response.status === 'draft') {
-        expect(response.rule.enabled, intent).toBe(false);
-        expect(response.rule.title.length, intent).toBeGreaterThan(0);
-        expect(response.rule.conditions.length, intent).toBeGreaterThan(0);
-        expect(response.rule.conditions.some((condition) => condition.type === 'semantic'), intent).toBe(true);
-        expect(response.rule.conditions.at(-1)?.value, intent).toContain('Evidence cues');
-      }
+      },
+      apiKey: 'test-key',
+      model: 'gpt-5-nano',
+    });
+
+    const secondBody = JSON.parse(fetchMock.mock.calls[1]?.[1]?.body as string);
+    expect(JSON.stringify(secondBody)).toContain('AND gates');
+    expect(response.status).toBe('draft');
+    if (response.status === 'draft') {
+      expect(response.rule.conditions.some((condition) => condition.type === 'day_of_week' && condition.negate)).toBe(false);
+      expect(response.rule.conditions.find((condition) => condition.type === 'semantic')?.value).toContain('disclaimer');
     }
+  });
+
+  it('reprompts when a specific planned intent incorrectly returns clarification questions', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(openAiClarificationResponse(['Which day should this apply to?']))
+      .mockResolvedValueOnce(openAiDraftResponse(validDraft()));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await draftRuleWithOpenAI({
+      request: {
+        mode: 'natural_language',
+        intent: 'only allow ragebait posts on sundays if they put a disclaimer at the bottom of the post',
+        timezone: 'America/Chicago',
+        currentRules: [],
+      },
+      apiKey: 'test-key',
+      model: 'gpt-5-nano',
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const secondBody = JSON.parse(fetchMock.mock.calls[1]?.[1]?.body as string);
+    expect(JSON.stringify(secondBody)).toContain('disabled draft instead of needs_clarification');
+    expect(response.status).toBe('draft');
+  });
+
+  it('reprompts when local rule validation rejects the generated draft', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(openAiDraftResponse(validDraft({ title: ''.padEnd(220, 'x') })))
+      .mockResolvedValueOnce(openAiDraftResponse(validDraft({ title: 'Valid title after repair' })));
+    vi.stubGlobal('fetch', fetchMock);
+    const validateDraft = vi.fn()
+      .mockReturnValueOnce('Title must be 200 characters or fewer.')
+      .mockReturnValueOnce(null);
+
+    const response = await draftRuleWithOpenAI({
+      request: {
+        mode: 'natural_language',
+        intent: 'no ragebait unless it follows the rule',
+        timezone: 'America/Chicago',
+        currentRules: [],
+      },
+      apiKey: 'test-key',
+      model: 'gpt-5-nano',
+      validateDraft,
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(validateDraft).toHaveBeenCalledTimes(2);
+    const secondBody = JSON.parse(fetchMock.mock.calls[1]?.[1]?.body as string);
+    expect(JSON.stringify(secondBody)).toContain('Title must be 200 characters or fewer');
+    expect(response.status).toBe('draft');
   });
 });

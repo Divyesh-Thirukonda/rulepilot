@@ -20,7 +20,7 @@ Note: Whenever more things need to be added to the todo like when you discover n
 ## P0: Hackathon Submission Readiness
 
 - [ ] Complete live playtest in `r/rulepilot_dev` with `monitor` mode first, then `flag`, then `filter`.
-- [ ] Set and verify the OpenAI secret with `npx devvit settings set openai-api-key`.
+- [x] Set and verify the OpenAI secret with `npx devvit settings set openai-api-key`.
 - [ ] Create a dashboard custom post from the subreddit menu and verify moderator-only access.
 - [ ] Run the golden r/csMajors cases against the live playtest:
   - [ ] career-only post routes to r/cscareerquestions guidance;
@@ -37,7 +37,10 @@ Note: Whenever more things need to be added to the todo like when you discover n
   - [ ] moderator feedback buttons;
   - [ ] install settings.
 - [ ] Add a short demo script showing submission, triage, dashboard review, and feedback.
-- [x] Add demo smoke coverage so the AI Builder creates a disabled fallback draft instead of surfacing unexplained 500 errors during live demos.
+- [x] Add demo smoke coverage so the AI Builder retries real OpenAI structured-output failures and surfaces detailed errors instead of creating local fallback drafts.
+  - [x] Add `npm run test:ai-builder:live` for pre-demo real OpenAI smoke testing of common moderator prompts.
+  - [x] Run `OPENAI_API_KEY=... npm run test:ai-builder:live` before the final demo.
+  - [x] Add and run `npm run test:classification:live` for real OpenAI classification schema/evidence smoke testing before the final demo.
 - [ ] Fill out app listing copy, privacy policy link, terms link, and support/contact path.
 - [ ] Publish only after verifying post-delete cleanup and Redis retention behavior in playtest logs.
 

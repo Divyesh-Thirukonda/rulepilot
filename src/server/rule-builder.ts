@@ -136,6 +136,32 @@ const aiRuleDraft = z.object({
 type AiRuleDraft = z.infer<typeof aiRuleDraft>;
 type AiConditionDraft = z.infer<typeof conditionDraft>;
 type AiDraftRule = NonNullable<AiRuleDraft['draft']>;
+type RuleBuilderErrorStatus = 400 | 401 | 500 | 502;
+
+const RULE_BUILDER_MAX_ATTEMPTS = 4;
+const RULE_BUILDER_TIMEOUT_MS = 45_000;
+const RULE_BUILDER_RETRY_STATUSES = new Set([408, 409, 429, 500, 502, 503, 504]);
+
+export class RuleBuilderGenerationError extends Error {
+  code: string;
+  details: string[];
+  retryable: boolean;
+  statusCode: number;
+
+  constructor(message: string, options: {
+    code: string;
+    details?: string[] | undefined;
+    retryable?: boolean | undefined;
+    statusCode?: number | undefined;
+  }) {
+    super(message);
+    this.name = 'RuleBuilderGenerationError';
+    this.code = options.code;
+    this.details = options.details ?? [];
+    this.retryable = options.retryable ?? false;
+    this.statusCode = options.statusCode ?? 502;
+  }
+}
 
 const RULE_BUILDER_SYSTEM_PROMPT = [
   'You are RulePilot AI Builder. Draft conservative subreddit moderation rules for human moderators to review.',
@@ -144,6 +170,12 @@ const RULE_BUILDER_SYSTEM_PROMPT = [
   'Never write a bare semantic label like "shitpost", "spam", "rude", or "low quality".',
   'For common subreddit moderation intents, combine deterministic conditions with one narrow semantic rubric.',
   'When semantic judgment is needed, write a compact rubric with match criteria, explicit non-matches, evidence cues, and uncertainty handling.',
+  'Important: RulePilot conditions are AND gates before the semantic classifier runs. Do not encode OR logic or exception logic as multiple deterministic conditions that must all be true.',
+  'If the user payload includes rulePlanHint.requiredSemanticCondition, you must include exactly one semantic condition whose value follows that requiredSemanticCondition.',
+  'A rulePlanHint overrides the generic commonModeratorIntentPlaybook.',
+  'If rulePlanHint.requiredStatus is "draft", do not return needs_clarification.',
+  'For rules like "only allow X on Sundays if Y", use broad deterministic preconditions for X and put the Sunday/Y exception logic inside the semantic rubric unless a single deterministic condition fully captures the violation.',
+  'Example: for "only allow ragebait posts on Sundays if they include a disclaimer", use deterministic conditions for ragebait/satire cues if helpful, then a semantic rubric that matches ragebait when either the local day is not Sunday or the required disclaimer is missing. Do not add day_of_week=Sunday as a positive gate.',
 ].join(' ');
 
 const COMMON_MODERATOR_INTENT_PLAYBOOK = [
@@ -344,138 +376,59 @@ function compactRules(rules: RuleBuilderRequest['currentRules']): RuleBuilderReq
   }));
 }
 
-function sentenceCase(value: string): string {
-  const trimmed = value.replace(/\s+/g, ' ').trim();
-  if (!trimmed) {
-    return 'Custom moderation rule';
-  }
-  return `${trimmed.charAt(0).toUpperCase()}${trimmed.slice(1)}`;
-}
-
-function titleFromIntent(intent: string): string {
-  const lower = intent.toLowerCase();
-  if (/\b(ragebait|satire|shitpost|meme|joke)\b/.test(lower) && /\bsunday|weekend\b/.test(lower)) {
-    return 'Timed satire and ragebait rule';
-  }
-  if (/\bresume|cv\b/.test(lower)) return 'Route resume posts';
-  if (/\bsurvey|questionnaire|research study|participants?\b/.test(lower)) return 'Require approval for surveys';
-  if (/\bhiring|referral|recruit|job opening|internship opening\b/.test(lower)) return 'Require approval for hiring and referrals';
-  if (/\bhomework|assignment|solve this|answer this|code for me\b/.test(lower)) return 'Homework help must show effort';
-  if (/\bai slop|low[- ]effort ai|chatgpt dump|prompt dump\b/.test(lower)) return 'Low-effort AI content';
-  return sentenceCase(intent).slice(0, 80);
-}
-
-function categoryFromIntent(intent: string): RuleCategory {
-  const lower = intent.toLowerCase();
-  if (/\b(ragebait|satire|shitpost|meme|joke|spoiler|title|format)\b/.test(lower)) return 'format';
-  if (/\brude|insult|harass|civility|respectful\b/.test(lower)) return 'civility';
-  if (/\bsurvey|hiring|referral|self[- ]promotion|promo|spam|recruit\b/.test(lower)) return 'promotion';
-  if (/\bresume|megathread|sticky|weekly thread\b/.test(lower)) return 'megathread';
-  if (/\boff[- ]topic|out of scope|elsewhere|wrong subreddit\b/.test(lower)) return 'scope';
-  if (/\boa|online assessment|interview question|exam|contest\b/.test(lower)) return 'sensitive';
-  return 'quality';
-}
-
-function actionFromIntent(intent: string): RuleAction {
-  const lower = intent.toLowerCase();
-  if (/\bfilter|mod queue|approval|required approval|require approval|route|megathread|sticky\b/.test(lower)) return 'filter';
-  if (/\blog only|monitor\b/.test(lower)) return 'log';
-  if (/\ballow|approve\b/.test(lower) && !/\bonly allow|except|unless\b/.test(lower)) return 'allow';
-  return 'flag';
-}
-
-function semanticRubricForIntent(intent: string): string {
-  const lower = intent.toLowerCase();
-  const disclaimer = /\bdisclaimer|note at the bottom|bottom of the post\b/.test(lower)
-    ? ' If the rule requires a disclaimer, match when the post lacks a visible disclaimer or the disclaimer is not clearly placed where the moderator requested.'
-    : '';
-  const sunday = /\bsunday|sundays\b/.test(lower)
-    ? ' If the rule has a Sunday exception, match posts outside Sunday in the configured subreddit timezone unless the moderator clearly intended the opposite.'
-    : '';
-
-  return [
-    `Detect posts for moderator intent: "${intent}".`,
-    'Match when the visible post title, body, flair, URL/domain, post type, or configured timing clearly satisfies the violation side of that intent.',
-    disclaimer,
-    sunday,
-    'Do not match good-faith posts that only share surface keywords, meta discussion about the rule, or posts where the required exception is visibly satisfied.',
-    'Evidence cues must come only from the provided post content, flair, URL/domain, post type, and local datetime. Do not infer author history or private behavior.',
-    'If the rule logic is ambiguous or only partially supported by the visible post, choose needs_review or insufficient_context rather than violation.',
-  ].filter(Boolean).join(' ').slice(0, 1000);
-}
-
-function fallbackConditions(intent: string): RuleCondition[] {
-  const lower = intent.toLowerCase();
-  const conditions: RuleCondition[] = [];
-
-  if (/\b(ragebait|satire|shitpost|meme|joke|bait|copypasta)\b/.test(lower)) {
-    conditions.push({
-      type: 'keyword',
-      field: 'title_and_body',
-      value: 'ragebait|satire|shitpost|meme|joke|bait|copypasta|hot take',
-    });
-  }
-  if (/\bresume|cv\b/.test(lower)) {
-    conditions.push({ type: 'keyword', field: 'title_and_body', value: 'resume|cv|roast|review|feedback|rate' });
-  }
-  if (/\bsurvey|questionnaire|research study|participants?\b/.test(lower)) {
-    conditions.push({ type: 'keyword', field: 'title_and_body', value: 'survey|questionnaire|research study|participants|google form|qualtrics' });
-  }
-  if (/\bdisclaimer|note at the bottom|bottom of the post\b/.test(lower)) {
-    conditions.push({
-      type: 'regex',
-      field: 'body',
-      value: '\\b(disclaimer|satire|parody|not serious|for humor|for entertainment)\\b',
-      negate: true,
-    });
-  }
-  if (/\bsunday|sundays\b/.test(lower)) {
-    conditions.push({ type: 'day_of_week', value: '', days: ['Sunday'], negate: true });
-  }
-  conditions.push({ type: 'semantic', value: semanticRubricForIntent(intent) });
-  return conditions;
-}
-
-export function buildFallbackRuleDraft(request: RuleBuilderRequest, reason?: string): RuleBuilderResponse {
-  const sourceText = request.intent?.trim()
-    || [request.subredditRule?.title, request.subredditRule?.description].filter(Boolean).join(': ').trim();
-  if (!sourceText) {
+function rulePlanHint(request: RuleBuilderRequest): Record<string, unknown> | undefined {
+  const source = [request.intent, request.subredditRule?.title, request.subredditRule?.description]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+  if (
+    /\bonly allow\b/.test(source) &&
+    /\b(ragebait|satire|shitpost|meme|joke|bait)\b/.test(source) &&
+    /\b(sunday|sundays|weekend)\b/.test(source) &&
+    /\b(disclaimer|bottom of the post|bottom-of-post|note at the bottom)\b/.test(source)
+  ) {
     return {
-      status: 'needs_clarification',
-      questions: ['What kind of posts should this rule match?', 'What action should RulePilot suggest when it matches?'],
+      name: 'timed_content_with_required_disclaimer',
+      requiredStatus: 'draft',
+      deterministicConditionGuidance: [
+        'Use only broad preconditions for ragebait/satire/meme-like content, such as keyword, flair, or post_type when useful.',
+        'Do not add day_of_week as a deterministic condition for this rule.',
+        'Do not add a negated disclaimer regex as a deterministic condition for this rule.',
+        'Reason: RulePilot deterministic conditions are ANDed, but this rule is violation = content matches AND (not Sunday OR missing disclaimer).',
+      ],
+      requiredSemanticCondition:
+        'Add exactly one semantic condition. Its value must explicitly include the words Sunday and disclaimer. It must say: Detect ragebait/satire-like posts. Match when the post is ragebait/satire/bait and either the local subreddit day is not Sunday or the post body does not end with a clear disclaimer. Do not match sincere posts, meta discussion, non-ragebait content, or Sunday ragebait/satire posts that include a clear bottom-of-post disclaimer. Evidence cues must include title/body/flair and local datetime only. If the day or disclaimer placement is unclear, choose needs_review.',
     };
   }
-
-  const now = new Date().toISOString();
-  const sourceTextLower = sourceText.toLowerCase();
-  const rule: RuleConfigV2 = {
-    id: generateRuleId(),
-    title: titleFromIntent(sourceText),
-    description: `Drafted from moderator intent: ${sourceText}`,
-    examples: [`Example that should match: ${sourceText}`],
-    negativeExamples: ['Good-faith post that discusses the topic without violating the rule.'],
-    action: actionFromIntent(sourceText),
-    threshold: categoryFromIntent(sourceText) === 'format' ? 0.72 : 0.76,
-    category: categoryFromIntent(sourceText),
-    enabled: false,
-    conditions: fallbackConditions(sourceText),
-    createdAt: now,
-    updatedAt: now,
-    source: 'custom',
-    modNotes: `Fallback draft generated for moderator review${reason ? ` because ${reason}` : ''}. Test in the simulator before enabling.`,
-  };
-
-  if (/\bresume|cv\b/.test(sourceTextLower)) {
-    rule.redirectTargetType = 'megathread';
-    rule.redirectTarget = 'Resume sticky';
-    rule.redirectTemplate = 'Please use the resume sticky thread for resume reviews.';
-    rule.redirect = rule.redirectTemplate;
+  if (/\b(ai slop|low[- ]effort ai|chatgpt dump|prompt dump|generated slop)\b/.test(source)) {
+    return {
+      name: 'low_effort_ai_content',
+      requiredStatus: 'draft',
+      deterministicConditionGuidance: [
+        'Use AI-related keywords only as weak preconditions when useful.',
+        'Do not draft a meme, shitpost, satire, or ragebait rule for this intent.',
+        'Do not claim AI-authorship detection.',
+      ],
+      requiredSemanticCondition:
+        'Add exactly one semantic condition whose value says: Detect low-effort AI content without claiming authorship detection. Match posts that are primarily generic, context-free, mass-produced, prompt-dump, pasted model output, or AI-wrapper spam with little original context. Do not match substantive discussion about AI tools, disclosed AI use with meaningful context, technical AI questions, or well-scoped examples. Evidence cues must come only from title, body, flair, URL/domain, and post type. If uncertain, choose needs_review or insufficient_context.',
+    };
   }
-
-  return { status: 'draft', rule };
+  if (/\b(live oa|live online assessment|online assessment questions?|interview questions?|exam questions?)\b/.test(source)) {
+    return {
+      name: 'live_assessment_question_sharing',
+      requiredStatus: 'draft',
+      deterministicConditionGuidance: [
+        'Use assessment/interview/exam keywords as preconditions when useful.',
+        'Do not rely only on keywords; practice and retrospective discussion can share the same words.',
+      ],
+      requiredSemanticCondition:
+        'Add exactly one semantic condition. Its value must explicitly include active/live assessment, exact questions, practice, retrospective, and general preparation. It must say: Detect requests to share, solve, or solicit active/live online assessment, interview, exam, or contest questions or answers. Match when the author appears to ask for or provide exact live assessment content. Do not match practice questions, retrospective discussion without exact questions, general preparation advice, or policy discussion. Evidence cues must come from title, body, flair, URL/domain, post type, and local datetime only. If live/active status is unclear, choose needs_review.',
+    };
+  }
+  return undefined;
 }
 
-export function buildRuleBuilderPayload(request: RuleBuilderRequest): Record<string, unknown> {
+export function buildRuleBuilderPayload(request: RuleBuilderRequest, retryInstruction?: string): Record<string, unknown> {
   return {
     task: 'Draft one disabled RulePilot rule for moderator review.',
     mode: request.mode,
@@ -493,8 +446,15 @@ export function buildRuleBuilderPayload(request: RuleBuilderRequest): Record<str
       'For common intents, draft a conservative rule instead of asking for clarification. Ask clarification only when the audience, allowed exception, action, or target is required and unknowable.',
       'Default action to flag unless the intent clearly asks to route/filter obvious posts.',
       'Generated rules must be disabled drafts; do not suggest bans, DMs, crawling, author-history checks, or AI-authorship detection.',
+      'Keep title, description, examples, and condition values concise enough to fit in one complete JSON response.',
       'For redirects, fill redirectTargetType, redirectTarget, and redirectTemplate only when rerouting is explicit.',
+      'When rulePlanHint is present, it overrides generic guidance. Follow rulePlanHint.requiredSemanticCondition exactly enough that a validator can see the required rubric in the semantic condition value.',
+      'When rulePlanHint.requiredStatus is draft, the moderator intent is specific enough; return a disabled draft instead of clarification questions.',
+      'Remember that RulePilot conditions are ANDed. For exception logic involving "only allow", "unless", "except", or "if", avoid deterministic conditions that accidentally require every violation path at once. Put complex boolean logic in the semantic rubric.',
+      'For "only allow X on Sunday if Y" style rules, the semantic rubric must explicitly mention the allowed day, the required condition, what counts as missing the condition, and that nonmatching allowed cases should not be flagged.',
     ],
+    retryInstruction,
+    rulePlanHint: rulePlanHint(request),
     commonModeratorIntentPlaybook: COMMON_MODERATOR_INTENT_PLAYBOOK,
     semanticConditionGuidance: {
       purpose: 'The condition.value for type=semantic becomes the future LLM classifier prompt for this rule.',
@@ -592,37 +552,122 @@ export function buildTemplateRuleDraft(templateId: RuleBuilderTemplateId): RuleB
 export function parseRuleBuilderResponse(payload: unknown): RuleBuilderResponse {
   const text = extractTextFromResponse(payload);
   if (!text) {
-    throw new Error('OpenAI response did not include rule draft text.');
+    throw new RuleBuilderGenerationError('OpenAI returned an empty Rule Builder response.', {
+      code: 'openai_empty_response',
+      details: ['The Responses API result did not include output_text or a text content part.'],
+      retryable: true,
+    });
   }
-  return normalizeAiDraft(aiRuleDraft.parse(JSON.parse(text)));
+  let json: unknown;
+  try {
+    json = JSON.parse(text);
+  } catch (error) {
+    throw new RuleBuilderGenerationError('OpenAI returned malformed JSON for the rule draft.', {
+      code: 'openai_invalid_json',
+      details: [
+        error instanceof Error ? error.message : String(error),
+        `Response excerpt: ${text.slice(0, 300)}`,
+      ],
+      retryable: true,
+    });
+  }
+
+  const parsed = aiRuleDraft.safeParse(json);
+  if (!parsed.success) {
+    throw new RuleBuilderGenerationError('OpenAI returned JSON that did not match the RulePilot draft schema.', {
+      code: 'openai_schema_mismatch',
+      details: formatZodIssues(parsed.error),
+      retryable: true,
+    });
+  }
+
+  return normalizeAiDraft(parsed.data);
 }
 
-export async function draftRuleWithOpenAI(options: {
+function formatZodIssues(error: z.ZodError): string[] {
+  return error.issues.slice(0, 8).map((issue) => {
+    const path = issue.path.length ? issue.path.join('.') : 'response';
+    return `${path}: ${issue.message}`;
+  });
+}
+
+function parseOpenAiErrorBody(body: string): string {
+  if (!body.trim()) {
+    return 'OpenAI returned an empty error body.';
+  }
+  try {
+    const json = JSON.parse(body) as { error?: { message?: string; type?: string; code?: string } };
+    const error = json.error;
+    if (error?.message) {
+      return [
+        error.message,
+        error.type ? `type=${error.type}` : '',
+        error.code ? `code=${error.code}` : '',
+      ].filter(Boolean).join(' ');
+    }
+  } catch {
+    // Fall through to body excerpt.
+  }
+  return body.slice(0, 500);
+}
+
+function toRuleBuilderError(error: unknown): RuleBuilderGenerationError {
+  if (error instanceof RuleBuilderGenerationError) {
+    return error;
+  }
+  if (error instanceof DOMException && error.name === 'AbortError') {
+    return new RuleBuilderGenerationError(`OpenAI did not respond within ${RULE_BUILDER_TIMEOUT_MS / 1000} seconds.`, {
+      code: 'openai_timeout',
+      details: ['The request timed out before RulePilot received a structured draft.'],
+      retryable: true,
+    });
+  }
+  return new RuleBuilderGenerationError('Rule Builder hit an unexpected server error.', {
+    code: 'rule_builder_unexpected_error',
+    details: [error instanceof Error ? error.message : String(error)],
+    retryable: false,
+    statusCode: 500,
+  });
+}
+
+function retryDelayMs(attempt: number): number {
+  return attempt === 1 ? 350 : 900;
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+async function requestOpenAiRuleDraft(options: {
   request: RuleBuilderRequest;
   apiKey: string;
   model: string;
-}): Promise<RuleBuilderResponse> {
-  if (options.request.mode === 'template' && options.request.templateId) {
-    return buildTemplateRuleDraft(options.request.templateId);
-  }
+  retryInstruction?: string | undefined;
+}): Promise<unknown> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), RULE_BUILDER_TIMEOUT_MS);
   try {
     const response = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
+      signal: controller.signal,
       headers: {
         Authorization: `Bearer ${options.apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         model: options.model,
+        max_output_tokens: 8192,
+        reasoning: { effort: 'low' },
         input: [
           {
             role: 'system',
-            content:
-              RULE_BUILDER_SYSTEM_PROMPT,
+            content: RULE_BUILDER_SYSTEM_PROMPT,
           },
           {
             role: 'user',
-            content: JSON.stringify(buildRuleBuilderPayload(options.request)),
+            content: JSON.stringify(buildRuleBuilderPayload(options.request, options.retryInstruction)),
           },
         ],
         text: {
@@ -637,13 +682,181 @@ export async function draftRuleWithOpenAI(options: {
     });
     if (!response.ok) {
       const body = await response.text();
-      throw new Error(`OpenAI rule draft failed: ${response.status} ${body.slice(0, 300)}`);
+      const requestId = response.headers.get('x-request-id');
+      const details = [
+        `OpenAI status: ${response.status}`,
+        parseOpenAiErrorBody(body),
+        requestId ? `OpenAI request id: ${requestId}` : '',
+      ].filter(Boolean);
+      throw new RuleBuilderGenerationError(
+        response.status === 401
+          ? 'OpenAI rejected the RulePilot API key.'
+          : response.status === 400
+            ? 'OpenAI rejected the Rule Builder request.'
+            : `OpenAI Rule Builder request failed with status ${response.status}.`,
+        {
+          code: `openai_http_${response.status}`,
+          details,
+          retryable: RULE_BUILDER_RETRY_STATUSES.has(response.status),
+          statusCode: response.status === 401 ? 401 : 502,
+        }
+      );
     }
-    return parseRuleBuilderResponse(await response.json());
+    return response.json();
   } catch (error) {
-    return buildFallbackRuleDraft(
-      options.request,
-      error instanceof Error ? error.message.slice(0, 220) : 'OpenAI rule draft was unavailable'
-    );
+    throw toRuleBuilderError(error);
+  } finally {
+    clearTimeout(timeout);
   }
+}
+
+function sourceTextForRequest(request: RuleBuilderRequest): string {
+  return [
+    request.intent,
+    request.subredditRule?.title,
+    request.subredditRule?.description,
+  ].filter(Boolean).join(' ').toLowerCase();
+}
+
+function conditionMentionsDisclaimer(condition: RuleCondition): boolean {
+  return /\b(disclaimer|satire|parody|not serious|humou?r|entertainment)\b/i.test(condition.value);
+}
+
+function reviewDraftLogic(response: RuleBuilderResponse, request: RuleBuilderRequest): string | null {
+  const plan = rulePlanHint(request);
+  if (response.status !== 'draft') {
+    if (plan?.requiredStatus === 'draft') {
+      return 'This moderator intent has a specific RulePilot plan, so the builder should return a disabled draft instead of needs_clarification.';
+    }
+    return null;
+  }
+  const sourceText = sourceTextForRequest(request);
+  const isOnlyAllowExceptionRule =
+    /\bonly allow\b/.test(sourceText) &&
+    /\b(sunday|sundays|weekend)\b/.test(sourceText) &&
+    /\b(disclaimer|note at the bottom|bottom of the post)\b/.test(sourceText);
+  if (!isOnlyAllowExceptionRule) {
+    return null;
+  }
+
+  const hasNegatedSundayGate = response.rule.conditions.some((condition) =>
+    condition.type === 'day_of_week' &&
+    condition.negate &&
+    condition.days?.some((day) => day.toLowerCase() === 'sunday')
+  );
+  const hasNegatedDisclaimerGate = response.rule.conditions.some((condition) =>
+    condition.negate && conditionMentionsDisclaimer(condition)
+  );
+  if (hasNegatedSundayGate && hasNegatedDisclaimerGate) {
+    return [
+      'The generated conditions encode exception logic incorrectly.',
+      'RulePilot evaluates deterministic conditions as AND gates, so combining "not Sunday" and "missing disclaimer" would only catch posts that satisfy both conditions.',
+      'For this intent, use a broad ragebait/satire precondition and put the Sunday/disclaimer requirement in the semantic rubric.',
+    ].join(' ');
+  }
+
+  const semanticRubric = response.rule.conditions.find((condition) => condition.type === 'semantic')?.value ?? '';
+  if (!/\b(disclaimer|sunday|exception|allowed)\b/i.test(semanticRubric)) {
+    return 'The semantic rubric does not explain the Sunday/disclaimer exception, so the classifier would not know how to apply the rule.';
+  }
+  return null;
+}
+
+function retryInstructionFor(error: RuleBuilderGenerationError, attempt: number, request: RuleBuilderRequest): string {
+  const plan = rulePlanHint(request);
+  return [
+    `Previous attempt ${attempt} failed: ${error.message}`,
+    ...error.details.slice(0, 5),
+    plan?.requiredSemanticCondition
+      ? `This retry will be rejected unless the draft includes exactly one semantic condition that follows this requirement: ${plan.requiredSemanticCondition}`
+      : '',
+    'Regenerate the rule from scratch as one strict JSON response.',
+    'Do not repeat the invalid structure.',
+    'If the issue mentions AND gates, move exception logic into the semantic rubric and keep deterministic conditions broad.',
+  ].filter(Boolean).join('\n').slice(0, 3200);
+}
+
+export function ruleBuilderErrorResponse(error: unknown): {
+  body: { error: string; code: string; details: string[]; retryable: boolean };
+  status: RuleBuilderErrorStatus;
+} {
+  const normalized = toRuleBuilderError(error);
+  const status: RuleBuilderErrorStatus =
+    normalized.statusCode === 400 ||
+    normalized.statusCode === 401 ||
+    normalized.statusCode === 500 ||
+    normalized.statusCode === 502
+      ? normalized.statusCode
+      : 502;
+  return {
+    body: {
+      error: normalized.message,
+      code: normalized.code,
+      details: normalized.details,
+      retryable: normalized.retryable,
+    },
+    status,
+  };
+}
+
+export async function draftRuleWithOpenAI(options: {
+  request: RuleBuilderRequest;
+  apiKey: string;
+  model: string;
+  validateDraft?: ((rule: RuleConfigV2) => string | null) | undefined;
+}): Promise<RuleBuilderResponse> {
+  if (options.request.mode === 'template' && options.request.templateId) {
+    return buildTemplateRuleDraft(options.request.templateId);
+  }
+
+  const attemptDetails: string[] = [];
+  let retryInstruction: string | undefined;
+
+  for (let attempt = 1; attempt <= RULE_BUILDER_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      const payload = await requestOpenAiRuleDraft({
+        request: options.request,
+        apiKey: options.apiKey,
+        model: options.model,
+        retryInstruction,
+      });
+      const result = parseRuleBuilderResponse(payload);
+      const logicError = reviewDraftLogic(result, options.request);
+      const validationError = result.status === 'draft' ? options.validateDraft?.(result.rule) ?? null : null;
+      if (logicError || validationError) {
+        throw new RuleBuilderGenerationError('OpenAI generated a draft that RulePilot could not safely accept.', {
+          code: 'invalid_generated_rule',
+          details: [logicError, validationError].filter((detail): detail is string => Boolean(detail)),
+          retryable: true,
+        });
+      }
+      return result;
+    } catch (error) {
+      const normalized = toRuleBuilderError(error);
+      attemptDetails.push(
+        `Attempt ${attempt}: ${normalized.message}${normalized.details[0] ? ` (${normalized.details[0]})` : ''}`
+      );
+      if (!normalized.retryable || attempt === RULE_BUILDER_MAX_ATTEMPTS) {
+        throw new RuleBuilderGenerationError(
+          attempt === 1
+            ? normalized.message
+            : `Rule Builder could not draft a valid rule after ${attempt} attempts.`,
+          {
+            code: normalized.code,
+            details: [...attemptDetails, ...normalized.details].slice(0, 10),
+            retryable: false,
+            statusCode: normalized.statusCode,
+          }
+        );
+      }
+      retryInstruction = retryInstructionFor(normalized, attempt, options.request);
+      await wait(retryDelayMs(attempt));
+    }
+  }
+
+  throw new RuleBuilderGenerationError('Rule Builder exhausted all attempts without producing a draft.', {
+    code: 'rule_builder_attempts_exhausted',
+    details: attemptDetails,
+    retryable: false,
+  });
 }

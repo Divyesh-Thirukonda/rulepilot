@@ -83,7 +83,7 @@ function safeDomain(url: string): string | undefined {
 // Individual condition evaluators
 // ---------------------------------------------------------------------------
 
-type ConditionEvalResult = { matched: boolean; signal: string };
+export type ConditionEvalResult = { matched: boolean; signal: string };
 
 function literalTokens(value: string): string[] {
   return value
@@ -179,6 +179,37 @@ function evaluateTimeWindow(condition: RuleCondition, timezone: string, now: Dat
   return { matched, signal: matched ? `time ${hour}:00 in window` : '' };
 }
 
+export function evaluateCondition(
+  post: PostInput,
+  condition: RuleCondition,
+  timezone: string,
+  now: Date
+): ConditionEvalResult {
+  switch (condition.type) {
+    case 'keyword':
+      return evaluateKeyword(post, condition);
+    case 'regex':
+      return evaluateRegex(post, condition);
+    case 'post_type':
+      return evaluatePostType(post, condition);
+    case 'flair':
+      return evaluateFlair(post, condition);
+    case 'url_domain':
+      return evaluateUrlDomain(post, condition);
+    case 'title_length':
+      return evaluateTitleLength(post, condition);
+    case 'body_length':
+      return evaluateBodyLength(post, condition);
+    case 'day_of_week':
+      return evaluateDayOfWeek(condition, timezone, now);
+    case 'time_window':
+      return evaluateTimeWindow(condition, timezone, now);
+    case 'semantic':
+    default:
+      return { matched: false, signal: '' };
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Core: evaluate all conditions for a single rule
 // ---------------------------------------------------------------------------
@@ -214,37 +245,7 @@ export function evaluateConditions(
     anyNonSemanticCondition = true;
     let result: ConditionEvalResult;
 
-    switch (condition.type) {
-      case 'keyword':
-        result = evaluateKeyword(post, condition);
-        break;
-      case 'regex':
-        result = evaluateRegex(post, condition);
-        break;
-      case 'post_type':
-        result = evaluatePostType(post, condition);
-        break;
-      case 'flair':
-        result = evaluateFlair(post, condition);
-        break;
-      case 'url_domain':
-        result = evaluateUrlDomain(post, condition);
-        break;
-      case 'title_length':
-        result = evaluateTitleLength(post, condition);
-        break;
-      case 'body_length':
-        result = evaluateBodyLength(post, condition);
-        break;
-      case 'day_of_week':
-        result = evaluateDayOfWeek(condition, timezone, now);
-        break;
-      case 'time_window':
-        result = evaluateTimeWindow(condition, timezone, now);
-        break;
-      default:
-        result = { matched: false, signal: '' };
-    }
+    result = evaluateCondition(post, condition, timezone, now);
 
     // Apply negation
     const effectiveMatch = condition.negate ? !result.matched : result.matched;

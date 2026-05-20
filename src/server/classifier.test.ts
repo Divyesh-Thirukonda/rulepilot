@@ -68,4 +68,32 @@ describe('calibrateLlmResult', () => {
     expect(result.decision).toBe('insufficient_context');
     expect(result.suggestedAction).toBe('log');
   });
+
+  it('normalizes LLM suggested action to the matched rule routing action', () => {
+    const logOnlyRule: RuleConfigV2 = {
+      id: 'log-only-topic',
+      title: 'Log-only topic',
+      description: 'Record these posts without taking a moderation action.',
+      examples: [],
+      negativeExamples: [],
+      action: 'log',
+      threshold: 0.7,
+      category: 'quality',
+      enabled: true,
+      conditions: [],
+      createdAt: '2026-05-18T00:00:00.000Z',
+      updatedAt: '2026-05-18T00:00:00.000Z',
+      source: 'custom',
+    };
+
+    const result = calibrateLlmResult(
+      llmResult({
+        ruleId: 'log-only-topic',
+        suggestedAction: 'filter_to_modqueue',
+      }),
+      [logOnlyRule]
+    );
+
+    expect(result.suggestedAction).toBe('log');
+  });
 });

@@ -92,6 +92,12 @@ export type ClassificationDecision = 'allowed' | 'needs_review' | 'violation' | 
 
 export type ClassificationSource = 'deterministic' | 'llm' | 'fallback';
 
+export type ClassificationEvidence = {
+  field: 'title' | 'body' | 'flair' | 'url' | 'post_type' | 'datetime' | 'quality' | 'rule' | 'other';
+  excerpt?: string | undefined;
+  note: string;
+};
+
 export type ClassificationResult = {
   decision: ClassificationDecision;
   ruleId: string | null;
@@ -100,6 +106,8 @@ export type ClassificationResult = {
   suggestedAction: SuggestedAction;
   source: ClassificationSource;
   matchedSignals: string[];
+  evidence?: ClassificationEvidence[] | undefined;
+  actionReason?: string | undefined;
 };
 
 // ---------------------------------------------------------------------------
