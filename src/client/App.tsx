@@ -722,7 +722,21 @@ function EditorDivider({ label }: { label: string }) {
   return <div className="editor-divider"><span>{label}</span></div>;
 }
 
-function RuleEditor({ initial, onSave, onCancel, saving, timezone }: { initial: Partial<RuleConfigV2>; onSave: (r: Partial<RuleConfigV2>) => void; onCancel: () => void; saving: boolean; timezone: string }) {
+function RuleEditor({
+  initial,
+  onSave,
+  onCancel,
+  onDelete,
+  saving,
+  timezone,
+}: {
+  initial: Partial<RuleConfigV2>;
+  onSave: (r: Partial<RuleConfigV2>) => void;
+  onCancel: () => void;
+  onDelete?: () => void;
+  saving: boolean;
+  timezone: string;
+}) {
   const [form, setForm] = useState<Partial<RuleConfigV2>>({ ...initial });
   const conditions = form.conditions ?? [];
   const setConditions = (c: RuleCondition[]) => setForm({ ...form, conditions: c });
@@ -750,8 +764,11 @@ function RuleEditor({ initial, onSave, onCancel, saving, timezone }: { initial: 
       <RepairEditor form={form} setForm={setForm} />
       <label className="editor-field full"><span>Mod notes (internal)</span><textarea rows={2} value={form.modNotes ?? ''} onChange={(e) => setForm({ ...form, modNotes: e.target.value })} placeholder="Internal notes only visible to moderators" /></label>
       <div className="editor-actions">
-        <button className="primary-button" disabled={saving || !form.title?.trim()} onClick={() => onSave(form)} type="button">{saving ? 'Saving...' : (initial.id ? 'Save changes' : 'Create rule')}</button>
-        <button className="secondary-button" onClick={onCancel} type="button">Cancel</button>
+        <div className="editor-actions-left">
+          <button className="primary-button" disabled={saving || !form.title?.trim()} onClick={() => onSave(form)} type="button">{saving ? 'Saving...' : (initial.id ? 'Save changes' : 'Create rule')}</button>
+          <button className="secondary-button" onClick={onCancel} type="button">Cancel</button>
+        </div>
+        {onDelete ? <button className="secondary-button danger-text editor-delete-button" onClick={onDelete} type="button">Delete rule</button> : null}
       </div>
     </div>
   );
@@ -814,7 +831,16 @@ function RuleBuilder({ onDraft, onClose }: { onDraft: (rule: RuleConfigV2) => vo
           <textarea rows={3} value={intent} onChange={(e) => setIntent(e.target.value)} placeholder="Example: only allow satire / ragebait posts on Sundays" />
         </label>
         <button className="primary-button" disabled={loading !== null || !intent.trim()} onClick={() => void draftFromBody('natural', { mode: 'natural_language', intent })}>
-          {loading === 'natural' ? 'Drafting' : 'Draft rule'}
+          {loading === 'natural' ? (
+            <span className="drafting-label">
+              <span>Drafting</span>
+              <span className="drafting-dots" aria-hidden="true">
+                <span>.</span>
+                <span>.</span>
+                <span>.</span>
+              </span>
+            </span>
+          ) : 'Draft rule'}
         </button>
       </div>
       {questions.length ? <div className="builder-note"><strong>Needs clarification</strong><ul>{questions.map((question) => <li key={question}>{question}</li>)}</ul></div> : null}
@@ -833,7 +859,7 @@ function RuleBuilderModal({ onDraft, onClose }: { onDraft: (rule: RuleConfigV2) 
   );
 }
 
-function RuleStudioRow({ rule, onEdit, onToggle, onDelete }: { rule: RuleConfigV2; onEdit: () => void; onToggle: (enabled: boolean) => void; onDelete: () => void }) {
+function RuleStudioRow({ rule, onEdit, onToggle }: { rule: RuleConfigV2; onEdit: () => void; onToggle: (enabled: boolean) => void }) {
   return (
     <div className={`rs-row ${rule.enabled ? '' : 'rs-row-disabled'}`}>
       <div className="rs-row-main">
@@ -845,7 +871,6 @@ function RuleStudioRow({ rule, onEdit, onToggle, onDelete }: { rule: RuleConfigV
       </div>
       <div className="rs-row-actions">
         <button className="secondary-button" onClick={onEdit}>Edit</button>
-        <button className="secondary-button danger-text" onClick={onDelete}>Delete</button>
       </div>
     </div>
   );
@@ -1012,12 +1037,21 @@ function RuleStudio({ rules, refresh, timezone }: { rules: RuleConfigV2[]; refre
           <div><h2>Rule Studio</h2><span>{localRules.length} rules</span></div>
         </div>
         {error ? <div className="rule-studio-error" role="alert">{error}</div> : null}
-        {needsRefresh ? <div className="rule-studio-sync"><span>Rule changes saved.</span><button className="secondary-button" type="button" onClick={() => void refreshFromServer()}>Refresh to load latest dashboard data</button></div> : null}
+        {needsRefresh ? <div className="rule-studio-sync"><span>Rule changes saved.</span><button className="secondary-button" type="button" onClick={() => void refreshFromServer()}>Refresh dashboard data</button></div> : null}
         <div className="rs-list">
           {localRules.map((rule) => (
             <div key={rule.id}>
-              <RuleStudioRow rule={rule} onEdit={() => { setEditingId(rule.id); }} onToggle={(e) => void handleToggle(rule.id, e)} onDelete={() => void handleDelete(rule.id)} />
-              {editingId === rule.id && <RuleEditor initial={rule} onSave={(f) => void handleSaveEdit(rule.id, f)} onCancel={() => setEditingId(null)} saving={saving} timezone={timezone} />}
+              <RuleStudioRow rule={rule} onEdit={() => { setEditingId(rule.id); }} onToggle={(e) => void handleToggle(rule.id, e)} />
+              {editingId === rule.id && (
+                <RuleEditor
+                  initial={rule}
+                  onSave={(f) => void handleSaveEdit(rule.id, f)}
+                  onCancel={() => setEditingId(null)}
+                  onDelete={() => void handleDelete(rule.id)}
+                  saving={saving}
+                  timezone={timezone}
+                />
+              )}
             </div>
           ))}
           {drafts.map((draft) => (

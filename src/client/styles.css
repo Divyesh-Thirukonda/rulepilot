@@ -880,6 +880,44 @@ a:hover {
   padding-inline: 22px;
 }
 
+.drafting-label {
+  align-items: baseline;
+  display: inline-flex;
+  justify-content: center;
+  min-width: 8ch;
+}
+
+.drafting-dots {
+  display: inline-grid;
+  grid-template-columns: repeat(3, 0.35em);
+  margin-left: 1px;
+}
+
+.drafting-dots span {
+  animation: drafting-dot 1.05s infinite ease-in-out;
+  opacity: 0.28;
+}
+
+.drafting-dots span:nth-child(2) {
+  animation-delay: 0.16s;
+}
+
+.drafting-dots span:nth-child(3) {
+  animation-delay: 0.32s;
+}
+
+@keyframes drafting-dot {
+  0%,
+  80%,
+  100% {
+    opacity: 0.28;
+  }
+
+  40% {
+    opacity: 1;
+  }
+}
+
 .modal-backdrop {
   align-items: center;
   background: rgba(0, 0, 0, 0.5);
@@ -1104,8 +1142,19 @@ a:hover {
 
 .editor-actions {
   display: flex;
+  align-items: center;
   gap: 8px;
+  justify-content: space-between;
   padding-top: 4px;
+}
+
+.editor-actions-left {
+  display: flex;
+  gap: 8px;
+}
+
+.editor-delete-button {
+  margin-left: auto;
 }
 
 .editor-divider {
