@@ -9,7 +9,7 @@ The app ships with a focused r/csMajors preset covering out-of-scope posts, resp
 - Scans new posts with deterministic checks for clear rule matches.
 - Uses OpenAI structured outputs for ambiguous rule-routing when enabled.
 - Stores an audit trail in Redis with the matched rule, confidence, explanation, action, and mod feedback.
-- Helps moderators draft new rules from natural language, one-click templates, or existing subreddit rules. AI-generated rules are saved as disabled drafts until a moderator reviews and enables them.
+- Helps moderators draft new rules from natural language or existing subreddit rules. AI-generated rules are saved as disabled drafts until a moderator reviews and enables them.
 - Provides mod-facing fixed-post draft links for rules that authors can repair, such as adding context, using a megathread, or reposting on an allowed day.
 - Records when AutoModerator already filtered a post so RulePilot can stand down and show that status in the dashboard.
 - Adds moderator menu actions:

@@ -5,7 +5,7 @@ import { createRoot } from 'react-dom/client';
 import type {
   CaseFeedback, CaseRecord, ConditionField, ConditionType, DashboardStats,
   DashboardTab, PostType, RedirectTargetType, RepairStrategy, RuleAction, RuleCategory, RuleCondition, RuleConfigV2,
-  RuleBuilderResponse, RuleBuilderTemplateId, RulePilotSettings,
+  RuleBuilderResponse, RulePilotSettings,
 } from '../shared/types';
 import { ROUTING_ACTIONS, routingActionDefinition, routingActionLabel, routingActionStatusClass } from '../shared/actions';
 import { createRepairDraftUrl, createSubredditDraftUrl, redirectForRule, redirectTargetUrl } from '../shared/redirects';
@@ -65,24 +65,8 @@ const REPAIR_STRATEGIES: Array<{ value: RepairStrategy; label: string }> = [
   { value: 'use_thread', label: 'Use thread' },
   { value: 'custom', label: 'Custom' },
 ];
-const BUILDER_TEMPLATES: Array<{ id: RuleBuilderTemplateId; label: string; description: string }> = [
-  {
-    id: 'sunday_memes',
-    label: 'Only allow memes on Sundays',
-    description: 'Drafts weekday meme routing with a Sunday exception.',
-  },
-  {
-    id: 'resume_megathread',
-    label: 'Route resume posts to a megathread',
-    description: 'Drafts resume review detection and sticky guidance.',
-  },
-  {
-    id: 'survey_approval',
-    label: 'Require approval for surveys',
-    description: 'Drafts survey and research-recruitment approval routing.',
-  },
-];
 const REDIRECT_TARGET_TYPES: RedirectTargetType[] = ['subreddit', 'megathread', 'url', 'custom'];
+const SUBREDDIT_RULE_IMPORT_KEY = 'rulepilot-imported-subreddit-rules';
 const REDIRECT_PRESETS = [
   {
     id: 'none',
@@ -556,6 +540,7 @@ function TagInput({ tags, onChange, placeholder }: { tags: string[]; onChange: (
 }
 
 function RuleSimulator({ rule, timezone }: { rule: Partial<RuleConfigV2>; timezone: string }) {
+  const [expanded, setExpanded] = useState(false);
   const [sample, setSample] = useState<SimulatorPost>({
     title: rule.examples?.[0] ?? 'Resume review for summer internship applications',
     body: '',
@@ -582,28 +567,40 @@ function RuleSimulator({ rule, timezone }: { rule: Partial<RuleConfigV2>; timezo
     <section className="rule-simulator" aria-label="Rule simulator">
       <div className="simulator-header">
         <div>
-          <h3>Simulator</h3>
+          <button
+            aria-expanded={expanded}
+            className="simulator-toggle"
+            onClick={() => setExpanded((value) => !value)}
+            type="button"
+          >
+            <span aria-hidden="true">{expanded ? 'v' : '>'}</span>
+            <strong>Simulator</strong>
+          </button>
           <span className="simulator-subtitle">Test this draft against one sample post before saving.</span>
         </div>
-        <span className={`simulator-outcome ${outcomeClass}`}>{outcome}</span>
+        {expanded ? <span className={`simulator-outcome ${outcomeClass}`}>{outcome}</span> : null}
       </div>
-      <div className="simulator-grid">
-        <label className="editor-field"><span>Sample title</span><input type="text" value={sample.title} onChange={(e) => setSample({ ...sample, title: e.target.value })} /></label>
-        <label className="editor-field"><span>Flair</span><input type="text" value={sample.flairText} onChange={(e) => setSample({ ...sample, flairText: e.target.value })} placeholder="Optional" /></label>
-        <label className="editor-field"><span>Post type</span><select value={sample.postType} onChange={(e) => setSample({ ...sample, postType: e.target.value as PostType })}>{POST_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}</select></label>
-        <label className="editor-field"><span>Local datetime</span><input type="datetime-local" value={sample.createdAt} onChange={(e) => setSample({ ...sample, createdAt: e.target.value })} /></label>
-        <label className="editor-field full"><span>Body</span><textarea rows={2} value={sample.body} onChange={(e) => setSample({ ...sample, body: e.target.value })} placeholder="Optional sample body" /></label>
-        <label className="editor-field full"><span>URL</span><input type="text" value={sample.url} onChange={(e) => setSample({ ...sample, url: e.target.value })} placeholder="https://example.com/post" /></label>
-      </div>
-      <div className="simulator-results">
-        {results.length ? results.map((result, index) => (
-          <div className={`simulator-result ${result.semantic ? 'simulator-result-llm' : result.matched ? 'simulator-result-match' : 'simulator-result-miss'}`} key={`${result.label}-${index}`}>
-            <strong>{result.semantic ? 'LLM' : result.matched ? 'Match' : 'Miss'}</strong>
-            <span>{result.label}</span>
-            <p>{result.signal}</p>
+      {expanded ? (
+        <>
+          <div className="simulator-grid">
+            <label className="editor-field"><span>Sample title</span><input type="text" value={sample.title} onChange={(e) => setSample({ ...sample, title: e.target.value })} /></label>
+            <label className="editor-field"><span>Flair</span><input type="text" value={sample.flairText} onChange={(e) => setSample({ ...sample, flairText: e.target.value })} placeholder="Optional" /></label>
+            <label className="editor-field"><span>Post type</span><select value={sample.postType} onChange={(e) => setSample({ ...sample, postType: e.target.value as PostType })}>{POST_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}</select></label>
+            <label className="editor-field"><span>Local datetime</span><input type="datetime-local" value={sample.createdAt} onChange={(e) => setSample({ ...sample, createdAt: e.target.value })} /></label>
+            <label className="editor-field full"><span>Body</span><textarea rows={2} value={sample.body} onChange={(e) => setSample({ ...sample, body: e.target.value })} placeholder="Optional sample body" /></label>
+            <label className="editor-field full"><span>URL</span><input type="text" value={sample.url} onChange={(e) => setSample({ ...sample, url: e.target.value })} placeholder="https://example.com/post" /></label>
           </div>
-        )) : <div className="simulator-empty">Add at least one condition to simulate this rule.</div>}
-      </div>
+          <div className="simulator-results">
+            {results.length ? results.map((result, index) => (
+              <div className={`simulator-result ${result.semantic ? 'simulator-result-llm' : result.matched ? 'simulator-result-match' : 'simulator-result-miss'}`} key={`${result.label}-${index}`}>
+                <strong>{result.semantic ? 'LLM' : result.matched ? 'Match' : 'Miss'}</strong>
+                <span>{result.label}</span>
+                <p>{result.signal}</p>
+              </div>
+            )) : <div className="simulator-empty">Add at least one condition to simulate this rule.</div>}
+          </div>
+        </>
+      ) : null}
     </section>
   );
 }
@@ -721,6 +718,10 @@ function RepairEditor({ form, setForm }: { form: Partial<RuleConfigV2>; setForm:
   );
 }
 
+function EditorDivider({ label }: { label: string }) {
+  return <div className="editor-divider"><span>{label}</span></div>;
+}
+
 function RuleEditor({ initial, onSave, onCancel, saving, timezone }: { initial: Partial<RuleConfigV2>; onSave: (r: Partial<RuleConfigV2>) => void; onCancel: () => void; saving: boolean; timezone: string }) {
   const [form, setForm] = useState<Partial<RuleConfigV2>>({ ...initial });
   const conditions = form.conditions ?? [];
@@ -731,10 +732,9 @@ function RuleEditor({ initial, onSave, onCancel, saving, timezone }: { initial: 
       <div className="editor-grid">
         <label className="editor-field"><span>Title</span><input type="text" value={form.title ?? ''} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Rule title" /></label>
         <label className="editor-field"><span>Category</span><select value={form.category ?? 'quality'} onChange={(e) => setForm({ ...form, category: e.target.value as RuleCategory })}>{(Object.keys(categoryLabels) as RuleCategory[]).map((c) => <option key={c} value={c}>{categoryLabels[c]}</option>)}</select></label>
-        <label className="editor-field"><span>Routing action</span><select value={form.action ?? 'flag'} onChange={(e) => setForm({ ...form, action: e.target.value as RuleAction })}>{ROUTING_ACTIONS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}</select><small>{selectedRoutingAction.description}</small></label>
-        <label className="editor-field"><span>Threshold</span><input type="number" step="0.01" min="0.01" max="0.99" value={form.threshold ?? 0.76} onChange={(e) => setForm({ ...form, threshold: Number(e.target.value) })} /></label>
       </div>
       <label className="editor-field full"><span>Description</span><textarea rows={2} value={form.description ?? ''} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Plain-English description of what this rule catches" /></label>
+      <EditorDivider label="Conditions" />
       <div className="editor-field full"><span>Positive examples (should match)</span><TagInput tags={form.examples ?? []} onChange={(t) => setForm({ ...form, examples: t })} placeholder="Add example and press Enter" /></div>
       <div className="editor-field full"><span>Negative examples (should NOT match)</span><TagInput tags={form.negativeExamples ?? []} onChange={(t) => setForm({ ...form, negativeExamples: t })} placeholder="Add counter-example and press Enter" /></div>
       <div className="editor-field full">
@@ -743,12 +743,15 @@ function RuleEditor({ initial, onSave, onCancel, saving, timezone }: { initial: 
         <button className="secondary-button add-condition-btn" type="button" onClick={() => setConditions([...conditions, emptyCondition()])}>+ Add condition</button>
       </div>
       <RuleSimulator rule={form} timezone={timezone} />
+      <label className="editor-field threshold-field"><span>Threshold</span><input type="number" step="0.01" min="0.01" max="0.99" value={form.threshold ?? 0.76} onChange={(e) => setForm({ ...form, threshold: Number(e.target.value) })} /></label>
+      <EditorDivider label="Actions" />
+      <label className="editor-field routing-action-field"><span>Routing action</span><select value={form.action ?? 'flag'} onChange={(e) => setForm({ ...form, action: e.target.value as RuleAction })}>{ROUTING_ACTIONS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}</select><small>{selectedRoutingAction.description}</small></label>
       <RedirectEditor form={form} setForm={setForm} />
       <RepairEditor form={form} setForm={setForm} />
       <label className="editor-field full"><span>Mod notes (internal)</span><textarea rows={2} value={form.modNotes ?? ''} onChange={(e) => setForm({ ...form, modNotes: e.target.value })} placeholder="Internal notes only visible to moderators" /></label>
       <div className="editor-actions">
-        <button className="primary-button" disabled={saving || !form.title?.trim()} onClick={() => onSave(form)}>{saving ? 'Saving…' : (initial.id ? 'Save changes' : 'Create rule')}</button>
-        <button className="secondary-button" onClick={onCancel}>Cancel</button>
+        <button className="primary-button" disabled={saving || !form.title?.trim()} onClick={() => onSave(form)} type="button">{saving ? 'Saving...' : (initial.id ? 'Save changes' : 'Create rule')}</button>
+        <button className="secondary-button" onClick={onCancel} type="button">Cancel</button>
       </div>
     </div>
   );
@@ -759,6 +762,13 @@ function RuleBuilder({ onDraft, onDrafts }: { onDraft: (rule: RuleConfigV2) => v
   const [loading, setLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [questions, setQuestions] = useState<string[]>([]);
+  const [subredditRulesImported, setSubredditRulesImported] = useState(() => {
+    try {
+      return window.localStorage.getItem(SUBREDDIT_RULE_IMPORT_KEY) === 'true';
+    } catch {
+      return false;
+    }
+  });
 
   const handleBuilderResponse = async (response: Response): Promise<RuleBuilderResponse> => {
     const body = await response.json().catch(() => undefined) as (RuleBuilderResponse & ErrorResponse) | undefined;
@@ -810,6 +820,12 @@ function RuleBuilder({ onDraft, onDrafts }: { onDraft: (rule: RuleConfigV2) => v
         throw new Error(body?.errors?.join(' ') || 'No draftable subreddit rules were returned.');
       }
       onDrafts(drafts);
+      setSubredditRulesImported(true);
+      try {
+        window.localStorage.setItem(SUBREDDIT_RULE_IMPORT_KEY, 'true');
+      } catch {
+        // Non-critical in embedded webviews that block localStorage.
+      }
       if (body?.errors?.length) {
         setQuestions(body.errors.slice(0, 3));
       }
@@ -827,26 +843,14 @@ function RuleBuilder({ onDraft, onDrafts }: { onDraft: (rule: RuleConfigV2) => v
           <h3>RulePilot AI Builder</h3>
           <span>Generate disabled drafts for moderators to review, simulate, and save.</span>
         </div>
-        <button className="secondary-button" disabled={loading !== null} onClick={() => void importSubredditRules()}>Import subreddit rules</button>
-      </div>
-      <div className="builder-template-grid">
-        {BUILDER_TEMPLATES.map((template) => (
-          <button
-            className="builder-template"
-            disabled={loading !== null}
-            key={template.id}
-            onClick={() => void draftFromBody(template.id, { mode: 'template', templateId: template.id })}
-            type="button"
-          >
-            <strong>{template.label}</strong>
-            <span>{template.description}</span>
-          </button>
-        ))}
+        {!subredditRulesImported ? (
+          <button className="secondary-button" disabled={loading !== null} onClick={() => void importSubredditRules()} type="button">Import subreddit rules</button>
+        ) : null}
       </div>
       <div className="builder-prompt-row">
         <label className="editor-field full">
           <span>Describe the rule you want</span>
-          <textarea rows={3} value={intent} onChange={(e) => setIntent(e.target.value)} placeholder="Example: flag posts asking for homework answers unless they show their attempt" />
+          <textarea rows={3} value={intent} onChange={(e) => setIntent(e.target.value)} placeholder="Example: only allow satire / ragebait posts on Sundays" />
         </label>
         <button className="primary-button" disabled={loading !== null || !intent.trim()} onClick={() => void draftFromBody('natural', { mode: 'natural_language', intent })}>
           {loading === 'natural' ? 'Drafting' : 'Draft rule'}

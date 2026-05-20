@@ -142,8 +142,102 @@ const RULE_BUILDER_SYSTEM_PROMPT = [
   'Only output the requested JSON shape.',
   'The semantic condition value is later sent to the classifier as the rule-specific detection prompt.',
   'Never write a bare semantic label like "shitpost", "spam", "rude", or "low quality".',
+  'For common subreddit moderation intents, combine deterministic conditions with one narrow semantic rubric.',
   'When semantic judgment is needed, write a compact rubric with match criteria, explicit non-matches, evidence cues, and uncertainty handling.',
 ].join(' ');
+
+const COMMON_MODERATOR_INTENT_PLAYBOOK = [
+  {
+    intent: 'No memes, shitposts, satire, ragebait, or joke-only posts except on allowed days',
+    deterministic: 'Use meme/humor/ragebait keywords, flair text, post type, day_of_week, and subreddit timezone.',
+    semantic:
+      'Match low-effort humor, joke-only reactions, bait, copypasta, satire/ragebait, and intentionally unserious posts. Exclude sincere questions, good-faith discussions, announcements, and meta discussion about the rule.',
+  },
+  {
+    intent: 'No AI slop or low-effort AI content',
+    deterministic: 'Use keywords such as ChatGPT, AI-generated, prompt, generated this, automated article, and obvious repeated boilerplate only as weak cues.',
+    semantic:
+      'Match posts that are primarily generic, mass-produced, context-free, or prompt-dump content. Do not claim authorship detection. Exclude legitimate discussion about AI tools, disclosed AI use with substantive context, and well-scoped technical questions.',
+  },
+  {
+    intent: 'No spam, self-promotion, or promotional links',
+    deterministic: 'Use URL domain, repeated CTA phrases, referral/promo keywords, link post type, and title/body link indicators.',
+    semantic:
+      'Match posts whose main purpose is advertising, lead capture, traffic farming, affiliate/referral promotion, or selling a product/service. Exclude neutral resource sharing with context and community-relevant discussion.',
+  },
+  {
+    intent: 'Low-effort or lazy questions',
+    deterministic: 'Use title/body length, title-only posts, question-mark heuristic, missing body, and vague phrases such as help, urgent, what should I do.',
+    semantic:
+      'Match posts with too little context for useful answers, no attempt shown, vague homework/career requests, or broad questions easily answered by the FAQ. Exclude concise but specific questions.',
+  },
+  {
+    intent: 'Civility, insults, harassment, or rude engagement',
+    deterministic: 'Use obvious slur/insult keywords only for high-signal cases.',
+    semantic:
+      'Match personal attacks, hostile insults, harassment, demeaning language toward users or groups, or inflammatory replies. Exclude criticism of ideas, policies, companies, or courses when phrased civilly.',
+  },
+  {
+    intent: 'Surveys, research studies, questionnaires, or recruiting participants require approval',
+    deterministic: 'Use survey, questionnaire, study, participants, Google Forms, Qualtrics, and recruitment keywords plus URL domains.',
+    semantic:
+      'Match requests for users to complete surveys, join studies, or provide research data. Exclude discussion of survey results or methodology unless recruiting participants.',
+  },
+  {
+    intent: 'Hiring, referrals, job posts, or recruiting require approval',
+    deterministic: 'Use hiring, referral, recruiting, apply, job opening, internship opening, DM me, and company-domain links.',
+    semantic:
+      'Match posts primarily recruiting candidates, offering referrals, collecting resumes, or advertising roles. Exclude discussion about job-search strategy or career advice.',
+  },
+  {
+    intent: 'Resume reviews belong in a megathread',
+    deterministic: 'Use resume/CV plus review/roast/feedback/rate/critique keywords.',
+    semantic:
+      'Match requests for individual resume review or resume roasting. Exclude general resume advice discussions and examples used for teaching.',
+  },
+  {
+    intent: 'Homework help must show effort',
+    deterministic: 'Use homework, assignment, project, answer, solve this, code for me, due tonight, and body length indicators.',
+    semantic:
+      'Match requests for direct answers or completed work without a visible attempt. Exclude debugging help, conceptual questions, and posts that include what the author tried.',
+  },
+  {
+    intent: 'No live interview, online assessment, exam, or contest question sharing',
+    deterministic: 'Use live OA, online assessment, interview question, exact question, exam, midterm, final, contest, and company names when present.',
+    semantic:
+      'Match attempts to share or request active assessment/interview/exam questions or answers. Exclude practice questions, retrospective discussion without exact questions, and policy discussion.',
+  },
+  {
+    intent: 'Out-of-scope or off-topic posts',
+    deterministic: 'Use absence/presence of community topic keywords, general college/career-only keywords, and configured redirect targets.',
+    semantic:
+      'Match posts clearly outside the subreddit scope. Require strong evidence and exclude posts with a reasonable connection to the community topic.',
+  },
+  {
+    intent: 'Buying advice, laptop recommendations, or setup questions belong elsewhere',
+    deterministic: 'Use laptop, MacBook, Windows, specs, RAM, GPU, monitor, keyboard, budget, buy, and recommendation keywords.',
+    semantic:
+      'Match consumer buying-advice posts where the main request is what to purchase. Exclude technical setup/debugging or course-specific hardware requirements.',
+  },
+  {
+    intent: 'Common reposted questions or restricted recurring topics',
+    deterministic: 'Use configured topic keywords, title/body regexes, and redirect guidance to FAQ/wiki/megathread.',
+    semantic:
+      'Match posts that are substantially the restricted recurring topic. Exclude adjacent posts with new evidence, unusual context, or a different core question.',
+  },
+  {
+    intent: 'Spoilers, title formatting, or required tags',
+    deterministic: 'Use flair, title regex, missing required prefix, post type, and spoiler keywords.',
+    semantic:
+      'Prefer deterministic checks. Use semantic only to decide whether the post contains spoiler-sensitive content when title/flair signals are incomplete.',
+  },
+  {
+    intent: 'Personal projects, showcases, or feedback requests must meet quality rules',
+    deterministic: 'Use project, showcase, feedback, built, app, GitHub, demo, launch, and URL-domain cues.',
+    semantic:
+      'Match project posts that are primarily drive-by promotion, lack technical/context detail, or ask for generic feedback. Exclude substantive writeups, lessons learned, and community-relevant technical discussion.',
+  },
+] as const;
 
 function extractTextFromResponse(payload: unknown): string | undefined {
   if (!payload || typeof payload !== 'object') return undefined;
@@ -198,7 +292,7 @@ function templateRule(templateId: RuleBuilderTemplateId, now: string): RuleConfi
         redirectTarget: 'r/ProgrammerHumor',
         redirectTemplate: 'Memes and low-context humor usually belong in r/ProgrammerHumor unless this subreddit allows them today.',
         redirect: 'Memes and low-context humor usually belong in r/ProgrammerHumor unless this subreddit allows them today.',
-        modNotes: 'Generated from the RulePilot one-click template. Review the keywords and timezone before enabling.',
+        modNotes: 'Generated from a RulePilot built-in template. Review the keywords and timezone before enabling.',
       };
     case 'resume_megathread':
       return {
@@ -218,7 +312,7 @@ function templateRule(templateId: RuleBuilderTemplateId, now: string): RuleConfi
         redirectTarget: 'Resume sticky',
         redirectTemplate: 'Please use the resume sticky thread for resume reviews.',
         redirect: 'Please use the resume sticky thread for resume reviews.',
-        modNotes: 'Generated from the RulePilot one-click template. Paste the active megathread URL before enabling if available.',
+        modNotes: 'Generated from a RulePilot built-in template. Paste the active megathread URL before enabling if available.',
       };
     case 'survey_approval':
       return {
@@ -237,7 +331,7 @@ function templateRule(templateId: RuleBuilderTemplateId, now: string): RuleConfi
         redirectTarget: 'Mod approval',
         redirectTemplate: 'Surveys and research recruitment posts need moderator approval before posting.',
         redirect: 'Surveys and research recruitment posts need moderator approval before posting.',
-        modNotes: 'Generated from the RulePilot one-click template. Adjust approval workflow language to match this community.',
+        modNotes: 'Generated from a RulePilot built-in template. Adjust approval workflow language to match this community.',
       };
   }
 }
@@ -264,12 +358,13 @@ export function buildRuleBuilderPayload(request: RuleBuilderRequest): Record<str
       'Use deterministic conditions whenever possible: keyword, regex, post_type, flair, url_domain, title/body length, day_of_week, or time_window.',
       'Use semantic only for the narrow ambiguous part that deterministic conditions cannot express.',
       'Semantic condition values must be classifier-ready rubrics, not labels. Include what to match, what not to match, visible evidence cues, and what to do when uncertain.',
-      'For common intents like "no shitposts", "no memes", "low-quality posts", "spam", or "rude comments", draft a conservative rule instead of asking for clarification, but make the semantic rubric narrow.',
-      'For "no shitposts", prefer deterministic signals like meme/humor keywords or flair, then add a semantic rubric that matches low-effort humor, meme formats, joke-only posts, bait, copypasta, or intentionally unserious content. Exclude sincere questions, good-faith discussions, meta posts about the rule, and posts that merely use casual language.',
+      'Use the commonModeratorIntentPlaybook when the moderator wording is close to one of those patterns. It is guidance, not a fixed list.',
+      'For common intents, draft a conservative rule instead of asking for clarification. Ask clarification only when the audience, allowed exception, action, or target is required and unknowable.',
       'Default action to flag unless the intent clearly asks to route/filter obvious posts.',
       'Generated rules must be disabled drafts; do not suggest bans, DMs, crawling, author-history checks, or AI-authorship detection.',
       'For redirects, fill redirectTargetType, redirectTarget, and redirectTemplate only when rerouting is explicit.',
     ],
+    commonModeratorIntentPlaybook: COMMON_MODERATOR_INTENT_PLAYBOOK,
     semanticConditionGuidance: {
       purpose: 'The condition.value for type=semantic becomes the future LLM classifier prompt for this rule.',
       requiredShape: 'Detect posts for this rule. Match when: ... Do not match when: ... Evidence cues: ... If uncertain: choose needs_review or insufficient_context.',

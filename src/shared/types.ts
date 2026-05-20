@@ -48,7 +48,7 @@ export type RuleCondition = {
   type: ConditionType;
   /** Which post field the condition applies to. */
   field?: ConditionField | undefined;
-  /** The value / pattern to match (keyword phrases pipe-separated, regex pattern, domain, semantic label, etc.). */
+  /** The value / pattern to match (keyword phrases pipe-separated, regex pattern, domain, semantic rubric, etc.). */
   value: string;
   /** For numeric range conditions (length, time). */
   min?: number | undefined;

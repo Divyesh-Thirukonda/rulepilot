@@ -84,7 +84,7 @@ describe('RulePilot AI Builder', () => {
     });
   });
 
-  it('generates one-click template drafts with expected defaults', () => {
+  it('generates built-in template drafts with expected defaults', () => {
     const meme = buildTemplateRuleDraft('sunday_memes');
     const resume = buildTemplateRuleDraft('resume_megathread');
     const survey = buildTemplateRuleDraft('survey_approval');
@@ -150,7 +150,22 @@ describe('RulePilot AI Builder', () => {
     });
 
     expect(JSON.stringify(payload)).toContain('Semantic condition values must be classifier-ready rubrics');
-    expect(JSON.stringify(payload)).toContain('no shitposts');
+    expect(JSON.stringify(payload)).toContain('shitposts');
     expect(JSON.stringify(payload)).toContain('Do not match sincere questions');
+  });
+
+  it('includes a broad common-intent playbook for typical moderator prompts', () => {
+    const payload = buildRuleBuilderPayload({
+      mode: 'natural_language',
+      intent: 'no AI slop',
+      timezone: 'America/Chicago',
+      currentRules: [],
+    });
+    const text = JSON.stringify(payload);
+
+    expect(text).toContain('No AI slop or low-effort AI content');
+    expect(text).toContain('Do not claim authorship detection');
+    expect(text).toContain('No live interview, online assessment, exam, or contest question sharing');
+    expect(text).toContain('Buying advice, laptop recommendations, or setup questions belong elsewhere');
   });
 });

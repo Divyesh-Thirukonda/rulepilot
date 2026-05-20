@@ -14,21 +14,21 @@ I have an app on my phone called Routines, which allows you to create custom rou
 
 ## What it does
 
-RulePilot scans new posts, explains likely rule matches, and gives mods a dashboard for reviewing cases. It ships with an r/csMajors starter pack, but mods can also create (and import!) their own rules in Rule Studio.
+RulePilot scans new posts, explains likely rule matches, and gives mods a dashboard for reviewing cases. It ships with an r/csMajors starter pack, but mods can also create and import their own rules in Rule Studio.
 
-RulePilot also includes an AI Builder that helps mods draft new rules from natural language, one-click templates, or existing subreddit rules. Generated rules are saved as disabled drafts so mods can review, test, edit, and enable them when ready. For broader demos, it includes a generic education-community starter pack for r/EngineeringStudents-style communities.
+RulePilot also includes an AI Builder that helps mods draft new rules from natural language or existing subreddit rules. Generated rules are saved as disabled drafts so mods can review, test, edit, and enable them when ready. The builder is designed for common moderator requests like spam, AI slop, low-effort posts, rude engagement, surveys, hiring/referrals, resume megathreads, homework boundaries, live interview/OA content, off-topic posts, buying advice, restricted recurring topics, formatting rules, and project showcases.
 
 For violations that are fixable, RulePilot can show mods repair guidance and open a fixed-post draft link. The draft includes the original post link and instructions for what to change, but it does not automatically message users, schedule reposts, or store the full original post body.
 
-[list more features and explain why]
+The goal is not to make moderation fully automatic. RulePilot turns fuzzy community guidelines into reviewable rules, shows why a post matched, and gives moderators a safer way to tune the system through examples, thresholds, simulator checks, and feedback.
 
 ## How we built it
 
 We built RulePilot as a Devvit app with a server-side moderation pipeline, Redis-backed audit records, moderator menu actions, and a custom post dashboard. I built a TODO list with features I wanted to accomplish, and had Codex help me with the development and debugging processes.
 
-The classifier combines deterministic checks for obvious cases with optional OpenAI structured-output classification for ambiguous rule matches. Rules are stored per subreddit as editable `RuleConfigV2` objects, with conditions for keywords, regex, flair, post type, URL domains, title/body length, day of week, time windows, and semantic categories.
+The classifier combines deterministic checks for obvious cases with optional OpenAI structured-output classification for ambiguous rule matches. Rules are stored per subreddit as editable `RuleConfigV2` objects, with conditions for keywords, regex, flair, post type, URL domains, title/body length, day of week, time windows, and semantic rubrics.
 
-On the moderator side, the dashboard shows recent cases, confidence, matched rules, actions, feedback, redirect guidance, and current rule configuration. Rule Studio lets mods create, edit, disable, import, export, simulate, and AI-draft rules.
+On the moderator side, the dashboard shows recent cases, confidence, matched rules, actions, feedback, redirect guidance, and current rule configuration. Rule Studio lets mods create, edit, disable, import, export, simulate, and AI-draft rules, with clear separation between rule conditions and the actions RulePilot should take.
 
 ## Challenges we ran into
 
@@ -42,7 +42,7 @@ Finally, and probably the most important part, was integrating well with existin
 
 We built a launch-ready moderation console with case review, rule editing, false-positive feedback, redirect guidance, and AI-assisted rule creation.
 
-We made the r/csMajors use case concrete while still keeping the app reusable for other communities. Mods can install the starter pack, customize it, or generate their own disabled draft rules from their community’s written rules.
+We made the r/csMajors use case concrete while still keeping the app reusable for other communities. Mods can install the starter pack, customize it, or generate their own disabled draft rules from natural-language intent or their community’s written rules.
 
 We also designed RulePilot to work with Reddit’s existing moderation stack. AutoModerator can continue handling deterministic rules, while RulePilot focuses on nuanced cases that benefit from explanation and moderator judgment.
 
@@ -58,4 +58,4 @@ Next, we want to complete live playtesting, collect moderator feedback, and tune
 
 After that, we want to add more reusable rule packs for education and career communities, improve the AI Builder with better clarification flows, and expand the dashboard with filters, sorting, and trend views.
 
-RulePilot could become a shared rule-building layer for moderators: a place to turn community guidelines into testable playground for experimentation, and reusable moderation workflows.
+RulePilot could become a shared rule-building layer for moderators: a place to turn community guidelines into a testable playground for experimentation and reusable moderation workflows.

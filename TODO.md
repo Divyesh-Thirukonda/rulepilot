@@ -179,15 +179,10 @@ Think like we're basically giving them conditions (datetime = sunday [from datet
 - [x] Consider an MCP-esque internal architecture for local development if it helps, but do not add platform complexity unless it clearly improves the product.
   - [x] Chose ordinary server helpers and one structured OpenAI call; no MCP-style runtime added for the hackathon MVP.
 - [x] Button to auto-import all written rules from in the subreddit rule section and auto-populate the rules for no rules exist in studio (like they're yet to be imported) and of course some rules may not exist, for which an llm prompt will be generated to generate the rules based on the subreddit's content and the moderator's intent.
-- !.. [x] Add one-click and natural language rule creation flows:
-  - [x] "Only allow memes on Sundays";
-  - [x] "Route resume posts to a megathread";
-  - [x] "Require approval for surveys";
-  - [ ] "Flag hiring/referral posts";
-  - [ ] "Flag live interview or OA question sharing";
-  - [ ] "Route laptop buying advice elsewhere";
-  - [ ] "Flag Amazon-specific posts";
-  - [ ] "Flag custom restricted topic".
+- [x] Keep the AI Builder focused on natural-language rule drafting and subreddit-rule import.
+  - [x] Remove one-click template buttons from the Rule Studio demo surface.
+  - [x] Update the natural-language placeholder to `only allow satire / ragebait posts on Sundays`.
+  - [x] Hide `Import subreddit rules` after the first successful import in the current browser.
 - [x] Add validation so AI-generated rules cannot:
   - [x] inspect author history;
   - [x] call unapproved external services;
@@ -196,8 +191,14 @@ Think like we're basically giving them conditions (datetime = sunday [from datet
   - [x] claim reliable AI-generated-text detection.
 - [x] Refine AI Builder prompt generation so semantic conditions become classifier-ready rubrics:
   - [x] tell OpenAI that `semantic` condition values are future classifier prompts, not labels;
-  - [x] add explicit no-shitposts guidance with match, non-match, evidence, and uncertainty boundaries;
+  - [x] add broad common-intent guidance for typical moderator prompts such as AI slop, spam, low effort, rude engagement, surveys, hiring, resume megathreads, homework, live OA/interview content, out-of-scope posts, buying advice, recurring restricted topics, formatting, and project showcases;
   - [x] expand weak generated semantic labels into rubrics before saving disabled drafts.
+- [x] Clean up Rule Studio rule-editing UX:
+  - [x] keep each simulator collapsed by default behind a `>` / `v` toggle;
+  - [x] add clear `Conditions` and `Actions` dividers;
+  - [x] keep threshold at the end of the Conditions section;
+  - [x] make routing action the first field in the Actions section;
+  - [x] align edit, delete, import, export, and draft buttons with Reddit-themed colors.
 
 ## P1: Common Rule Library
 
