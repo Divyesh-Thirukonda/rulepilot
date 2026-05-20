@@ -228,6 +228,21 @@ describe('RulePilot AI Builder', () => {
     expect(JSON.stringify(payload)).toContain('Do not match sincere questions');
   });
 
+  it('generalizes timed disclaimer rule planning beyond Sundays', () => {
+    const payload = buildRuleBuilderPayload({
+      mode: 'natural_language',
+      intent: 'only allow ragebait posts on Wednesdays if they put a disclaimer at the bottom of the post',
+      timezone: 'America/Chicago',
+      currentRules: [],
+    });
+    const text = JSON.stringify(payload);
+    const rulePlanHint = payload.rulePlanHint as { requiredSemanticCondition: string };
+
+    expect(text).toContain('not Wednesday OR missing disclaimer');
+    expect(rulePlanHint.requiredSemanticCondition).toContain('explicitly include "Wednesday" and "disclaimer"');
+    expect(text).toContain('Do not add day_of_week as a deterministic condition');
+  });
+
   it('includes a broad common-intent playbook for typical moderator prompts', () => {
     const payload = buildRuleBuilderPayload({
       mode: 'natural_language',
@@ -375,6 +390,125 @@ describe('RulePilot AI Builder', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     const secondBody = JSON.parse(fetchMock.mock.calls[1]?.[1]?.body as string);
     expect(JSON.stringify(secondBody)).toContain('disabled draft instead of needs_clarification');
+    expect(response.status).toBe('draft');
+  });
+
+  it('reprompts when a Wednesday disclaimer draft omits the timing exception from semantic rubric', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(openAiDraftResponse(validDraft({
+        conditions: [
+          {
+            type: 'keyword',
+            field: 'title_and_body',
+            value: 'ragebait|satire',
+            min: null,
+            max: null,
+            days: [],
+            negate: false,
+          },
+          {
+            type: 'semantic',
+            field: null,
+            value:
+              'Detect satire or ragebait posts. Match when the post is satire or ragebait and lacks a clear disclaimer. Do not match sincere discussion.',
+            min: null,
+            max: null,
+            days: [],
+            negate: false,
+          },
+        ],
+      })))
+      .mockResolvedValueOnce(openAiDraftResponse(validDraft({
+        conditions: [
+          {
+            type: 'keyword',
+            field: 'title_and_body',
+            value: 'ragebait|satire',
+            min: null,
+            max: null,
+            days: [],
+            negate: false,
+          },
+          {
+            type: 'semantic',
+            field: null,
+            value:
+              'Detect satire or ragebait posts. Match when the post is satire or ragebait and either it is not Wednesday in the subreddit timezone or it lacks a clear disclaimer at the bottom of the body. Do not match sincere discussion, or Wednesday satire/ragebait posts with a clear bottom disclaimer. Evidence cues must come from title, body, flair, and local datetime. If uncertain, choose needs_review.',
+            min: null,
+            max: null,
+            days: [],
+            negate: false,
+          },
+        ],
+      })));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await draftRuleWithOpenAI({
+      request: {
+        mode: 'natural_language',
+        intent: 'only allow ragebait posts on wednesdays if they put a disclaimer at the bottom of the post',
+        timezone: 'America/Chicago',
+        currentRules: [],
+      },
+      apiKey: 'test-key',
+      model: 'gpt-5-nano',
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const secondBody = JSON.parse(fetchMock.mock.calls[1]?.[1]?.body as string);
+    expect(JSON.stringify(secondBody)).toContain('Wednesday/disclaimer exception');
+    expect(response.status).toBe('draft');
+  });
+
+  it('reprompts when a planned AI slop draft omits a semantic condition', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(openAiDraftResponse(validDraft({
+        title: 'No AI slop',
+        description: 'Flag low-effort AI content.',
+        conditions: [
+          {
+            type: 'keyword',
+            field: 'title_and_body',
+            value: 'chatgpt|ai generated|prompt dump',
+            min: null,
+            max: null,
+            days: [],
+            negate: false,
+          },
+        ],
+      })))
+      .mockResolvedValueOnce(openAiDraftResponse(validDraft({
+        title: 'No AI slop',
+        description: 'Flag low-effort AI content.',
+        conditions: [
+          {
+            type: 'semantic',
+            field: null,
+            value:
+              'Detect low-effort AI content without claiming authorship detection. Match posts that are primarily generic, context-free, mass-produced, prompt-dump, pasted model output, or AI-wrapper spam with little original context. Do not match substantive discussion about AI tools, disclosed AI use with meaningful context, technical AI questions, or well-scoped examples. Evidence cues must come only from title, body, flair, URL/domain, and post type. If uncertain, choose needs_review or insufficient_context.',
+            min: null,
+            max: null,
+            days: [],
+            negate: false,
+          },
+        ],
+      })));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await draftRuleWithOpenAI({
+      request: {
+        mode: 'natural_language',
+        intent: 'no AI slop',
+        timezone: 'America/Chicago',
+        currentRules: [],
+      },
+      apiKey: 'test-key',
+      model: 'gpt-5-nano',
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const secondBody = JSON.parse(fetchMock.mock.calls[1]?.[1]?.body as string);
+    expect(JSON.stringify(secondBody)).toContain('requires exactly one semantic condition');
     expect(response.status).toBe('draft');
   });
 

@@ -783,9 +783,15 @@ function RuleBuilder({ onDraft, onClose }: { onDraft: (rule: RuleConfigV2) => vo
   const [questions, setQuestions] = useState<string[]>([]);
 
   const handleBuilderResponse = async (response: Response): Promise<RuleBuilderResponse> => {
-    const body = await response.json().catch(() => undefined) as (RuleBuilderResponse & ErrorResponse) | undefined;
+    const raw = await response.text();
+    let body: (RuleBuilderResponse & ErrorResponse) | undefined;
+    try {
+      body = raw ? JSON.parse(raw) as RuleBuilderResponse & ErrorResponse : undefined;
+    } catch {
+      body = undefined;
+    }
     if (!response.ok) {
-      const details = body?.details?.filter(Boolean) ?? [];
+      const details = body?.details?.filter(Boolean) ?? (raw ? [`Raw response: ${raw.slice(0, 500)}`] : []);
       const suffix = details.length ? `\n${details.map((detail) => `- ${detail}`).join('\n')}` : '';
       throw new Error(`${body?.error ?? `Rule Builder failed (${response.status})`}${suffix}`);
     }

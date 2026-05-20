@@ -5,6 +5,7 @@ import { draftRuleWithOpenAI, RuleBuilderGenerationError } from './rule-builder'
 
 const LIVE_PROMPTS = [
   'only allow ragebait posts on sundays if they put a disclaimer at the bottom of the post',
+  'only allow ragebait posts on wednesdays if they put a disclaimer at the bottom of the post',
   'no AI slop',
   'require approval for surveys',
   'no live online assessment questions',
@@ -22,6 +23,12 @@ function validateLiveDraft(intent: string, rule: RuleConfigV2): string | null {
     return 'Generated rule should include a semantic rubric for ambiguous moderation language.';
   }
   if (semantic && semantic.value.length < 120) return 'Semantic condition was too short to be a useful classifier rubric.';
+  if (/\bwednesdays?\b/i.test(intent) && semantic && !/\bwednesdays?\b/i.test(semantic.value)) {
+    return 'Semantic condition must mention the Wednesday timing exception.';
+  }
+  if (/\bdisclaimer\b/i.test(intent) && semantic && !/\bdisclaimer\b/i.test(semantic.value)) {
+    return 'Semantic condition must mention the disclaimer exception.';
+  }
   return null;
 }
 

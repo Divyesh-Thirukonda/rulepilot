@@ -172,6 +172,7 @@ const RULE_BUILDER_SYSTEM_PROMPT = [
   'When semantic judgment is needed, write a compact rubric with match criteria, explicit non-matches, evidence cues, and uncertainty handling.',
   'Important: RulePilot conditions are AND gates before the semantic classifier runs. Do not encode OR logic or exception logic as multiple deterministic conditions that must all be true.',
   'If the user payload includes rulePlanHint.requiredSemanticCondition, you must include exactly one semantic condition whose value follows that requiredSemanticCondition.',
+  'A response without a condition object where type is "semantic" is invalid whenever rulePlanHint.requiredSemanticCondition is present.',
   'A rulePlanHint overrides the generic commonModeratorIntentPlaybook.',
   'If rulePlanHint.requiredStatus is "draft", do not return needs_clarification.',
   'For rules like "only allow X on Sundays if Y", use broad deterministic preconditions for X and put the Sunday/Y exception logic inside the semantic rubric unless a single deterministic condition fully captures the violation.',
@@ -376,15 +377,29 @@ function compactRules(rules: RuleBuilderRequest['currentRules']): RuleBuilderReq
   }));
 }
 
+function allowedTimingFromSource(source: string): { label: string; regex: RegExp } | undefined {
+  for (const day of DAYS) {
+    const lower = day.toLowerCase();
+    if (new RegExp(`\\b${lower}s?\\b`).test(source)) {
+      return { label: day, regex: new RegExp(`\\b${lower}s?\\b`, 'i') };
+    }
+  }
+  if (/\bweekends?\b/.test(source)) {
+    return { label: 'weekend', regex: /\b(saturday|sunday|weekends?)\b/i };
+  }
+  return undefined;
+}
+
 function rulePlanHint(request: RuleBuilderRequest): Record<string, unknown> | undefined {
   const source = [request.intent, request.subredditRule?.title, request.subredditRule?.description]
     .filter(Boolean)
     .join(' ')
     .toLowerCase();
+  const allowedTiming = allowedTimingFromSource(source);
   if (
     /\bonly allow\b/.test(source) &&
     /\b(ragebait|satire|shitpost|meme|joke|bait)\b/.test(source) &&
-    /\b(sunday|sundays|weekend)\b/.test(source) &&
+    allowedTiming &&
     /\b(disclaimer|bottom of the post|bottom-of-post|note at the bottom)\b/.test(source)
   ) {
     return {
@@ -394,10 +409,10 @@ function rulePlanHint(request: RuleBuilderRequest): Record<string, unknown> | un
         'Use only broad preconditions for ragebait/satire/meme-like content, such as keyword, flair, or post_type when useful.',
         'Do not add day_of_week as a deterministic condition for this rule.',
         'Do not add a negated disclaimer regex as a deterministic condition for this rule.',
-        'Reason: RulePilot deterministic conditions are ANDed, but this rule is violation = content matches AND (not Sunday OR missing disclaimer).',
+        `Reason: RulePilot deterministic conditions are ANDed, but this rule is violation = content matches AND (not ${allowedTiming.label} OR missing disclaimer).`,
       ],
       requiredSemanticCondition:
-        'Add exactly one semantic condition. Its value must explicitly include the words Sunday and disclaimer. It must say: Detect ragebait/satire-like posts. Match when the post is ragebait/satire/bait and either the local subreddit day is not Sunday or the post body does not end with a clear disclaimer. Do not match sincere posts, meta discussion, non-ragebait content, or Sunday ragebait/satire posts that include a clear bottom-of-post disclaimer. Evidence cues must include title/body/flair and local datetime only. If the day or disclaimer placement is unclear, choose needs_review.',
+        `Add exactly one semantic condition. Its value must explicitly include "${allowedTiming.label}" and "disclaimer". It must say: Detect ragebait/satire-like posts. Match when the post is ragebait/satire/bait and either the local subreddit timing is not ${allowedTiming.label} or the post body does not end with a clear disclaimer. Do not match sincere posts, meta discussion, non-ragebait content, or ${allowedTiming.label} ragebait/satire posts that include a clear bottom-of-post disclaimer. Evidence cues must include title/body/flair and local datetime only. If the day or disclaimer placement is unclear, choose needs_review.`,
     };
   }
   if (/\b(ai slop|low[- ]effort ai|chatgpt dump|prompt dump|generated slop)\b/.test(source)) {
@@ -406,11 +421,12 @@ function rulePlanHint(request: RuleBuilderRequest): Record<string, unknown> | un
       requiredStatus: 'draft',
       deterministicConditionGuidance: [
         'Use AI-related keywords only as weak preconditions when useful.',
+        'Do not use only deterministic conditions; this rule requires one semantic condition.',
         'Do not draft a meme, shitpost, satire, or ragebait rule for this intent.',
         'Do not claim AI-authorship detection.',
       ],
       requiredSemanticCondition:
-        'Add exactly one semantic condition whose value says: Detect low-effort AI content without claiming authorship detection. Match posts that are primarily generic, context-free, mass-produced, prompt-dump, pasted model output, or AI-wrapper spam with little original context. Do not match substantive discussion about AI tools, disclosed AI use with meaningful context, technical AI questions, or well-scoped examples. Evidence cues must come only from title, body, flair, URL/domain, and post type. If uncertain, choose needs_review or insufficient_context.',
+        'Add exactly one condition object with type "semantic". Its value must say: Detect low-effort AI content without claiming authorship detection. Match posts that are primarily generic, context-free, mass-produced, prompt-dump, pasted model output, or AI-wrapper spam with little original context. Do not match substantive discussion about AI tools, disclosed AI use with meaningful context, technical AI questions, or well-scoped examples. Evidence cues must come only from title, body, flair, URL/domain, and post type. If uncertain, choose needs_review or insufficient_context.',
     };
   }
   if (/\b(live oa|live online assessment|online assessment questions?|interview questions?|exam questions?)\b/.test(source)) {
@@ -449,9 +465,10 @@ export function buildRuleBuilderPayload(request: RuleBuilderRequest, retryInstru
       'Keep title, description, examples, and condition values concise enough to fit in one complete JSON response.',
       'For redirects, fill redirectTargetType, redirectTarget, and redirectTemplate only when rerouting is explicit.',
       'When rulePlanHint is present, it overrides generic guidance. Follow rulePlanHint.requiredSemanticCondition exactly enough that a validator can see the required rubric in the semantic condition value.',
+      'When rulePlanHint.requiredSemanticCondition is present, the draft must contain exactly one condition with type semantic.',
       'When rulePlanHint.requiredStatus is draft, the moderator intent is specific enough; return a disabled draft instead of clarification questions.',
       'Remember that RulePilot conditions are ANDed. For exception logic involving "only allow", "unless", "except", or "if", avoid deterministic conditions that accidentally require every violation path at once. Put complex boolean logic in the semantic rubric.',
-      'For "only allow X on Sunday if Y" style rules, the semantic rubric must explicitly mention the allowed day, the required condition, what counts as missing the condition, and that nonmatching allowed cases should not be flagged.',
+      'For "only allow X on <day/time> if Y" style rules, the semantic rubric must explicitly mention the allowed day/time, the required condition, what counts as missing the condition, and that nonmatching allowed cases should not be flagged.',
     ],
     retryInstruction,
     rulePlanHint: rulePlanHint(request),
@@ -730,10 +747,17 @@ function reviewDraftLogic(response: RuleBuilderResponse, request: RuleBuilderReq
     }
     return null;
   }
+  const requiredSemanticCondition =
+    plan && typeof plan.requiredSemanticCondition === 'string' ? plan.requiredSemanticCondition : undefined;
+  const semanticConditions = response.rule.conditions.filter((condition) => condition.type === 'semantic');
+  if (requiredSemanticCondition && semanticConditions.length !== 1) {
+    return 'This moderator intent requires exactly one semantic condition. Deterministic checks may be included as weak preconditions, but they cannot replace the semantic classifier rubric.';
+  }
   const sourceText = sourceTextForRequest(request);
+  const allowedTiming = allowedTimingFromSource(sourceText);
   const isOnlyAllowExceptionRule =
     /\bonly allow\b/.test(sourceText) &&
-    /\b(sunday|sundays|weekend)\b/.test(sourceText) &&
+    Boolean(allowedTiming) &&
     /\b(disclaimer|note at the bottom|bottom of the post)\b/.test(sourceText);
   if (!isOnlyAllowExceptionRule) {
     return null;
@@ -742,7 +766,7 @@ function reviewDraftLogic(response: RuleBuilderResponse, request: RuleBuilderReq
   const hasNegatedSundayGate = response.rule.conditions.some((condition) =>
     condition.type === 'day_of_week' &&
     condition.negate &&
-    condition.days?.some((day) => day.toLowerCase() === 'sunday')
+    condition.days?.some((day) => allowedTiming?.regex.test(day))
   );
   const hasNegatedDisclaimerGate = response.rule.conditions.some((condition) =>
     condition.negate && conditionMentionsDisclaimer(condition)
@@ -750,14 +774,14 @@ function reviewDraftLogic(response: RuleBuilderResponse, request: RuleBuilderReq
   if (hasNegatedSundayGate && hasNegatedDisclaimerGate) {
     return [
       'The generated conditions encode exception logic incorrectly.',
-      'RulePilot evaluates deterministic conditions as AND gates, so combining "not Sunday" and "missing disclaimer" would only catch posts that satisfy both conditions.',
-      'For this intent, use a broad ragebait/satire precondition and put the Sunday/disclaimer requirement in the semantic rubric.',
+      `RulePilot evaluates deterministic conditions as AND gates, so combining "not ${allowedTiming?.label ?? 'allowed time'}" and "missing disclaimer" would only catch posts that satisfy both conditions.`,
+      'For this intent, use a broad ragebait/satire precondition and put the timing/disclaimer requirement in the semantic rubric.',
     ].join(' ');
   }
 
-  const semanticRubric = response.rule.conditions.find((condition) => condition.type === 'semantic')?.value ?? '';
-  if (!/\b(disclaimer|sunday|exception|allowed)\b/i.test(semanticRubric)) {
-    return 'The semantic rubric does not explain the Sunday/disclaimer exception, so the classifier would not know how to apply the rule.';
+  const semanticRubric = semanticConditions[0]?.value ?? '';
+  if (!/\b(disclaimer|exception|allowed)\b/i.test(semanticRubric) || (allowedTiming && !allowedTiming.regex.test(semanticRubric))) {
+    return `The semantic rubric does not explain the ${allowedTiming?.label ?? 'timing'}/disclaimer exception, so the classifier would not know how to apply the rule.`;
   }
   return null;
 }
