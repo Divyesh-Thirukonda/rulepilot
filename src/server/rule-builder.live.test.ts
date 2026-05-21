@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import type { ConditionType, RuleAction, RuleConfigV2 } from '../shared/types';
+import type { ConditionType, RuleAction, RuleConfigV2, SubredditRuleInput } from '../shared/types';
 import { draftRuleWithOpenAI, RuleBuilderGenerationError } from './rule-builder';
 
 type LiveRuleAuditCase = {
   name: string;
-  intent: string;
+  intent?: string | undefined;
+  subredditRule?: SubredditRuleInput | undefined;
   mustHaveTypes?: ConditionType[] | undefined;
   mustNotHaveTypes?: ConditionType[] | undefined;
   semanticIncludes?: string[] | undefined;
@@ -158,6 +159,169 @@ const LIVE_RULE_AUDIT_CASES: LiveRuleAuditCase[] = [
   },
 ];
 
+const CS_MAJORS_IMPORT_RULE_CASES: LiveRuleAuditCase[] = [
+  {
+    name: 'import r/csMajors out of scope',
+    subredditRule: {
+      title: 'Out of scope',
+      description:
+        'This sub is for college-level CS and related majors: computer science, computer engineering, software engineering, math, information science, and stuff in that lane. If your post is really about general college life, put it in r/college. If it is mainly about jobs, recruiting, interviews, or career stuff rather than school itself, r/cscareerquestions is the better fit.',
+    },
+    mustHaveTypes: ['semantic'],
+    mustNotHaveTypes: ['keyword', 'regex'],
+    semanticIncludes: ['general college', 'career', 'computer science'],
+  },
+  {
+    name: 'import r/csMajors respectful engagement',
+    subredditRule: {
+      title: 'Respectful engagement',
+      description:
+        'Don’t be a jerk. Offensive posts and comments are not allowed. That also applies to DMs tied to the sub, and the mods explicitly say to modmail them if someone is harassing you there.',
+    },
+    mustHaveTypes: ['semantic'],
+    mustNotHaveTypes: ['keyword', 'regex'],
+    semanticIncludes: ['personal attacks', 'Do not match', 'civil disagreement'],
+  },
+  {
+    name: 'import r/csMajors shitposts and memes',
+    subredditRule: {
+      title: 'Shitposts and memes',
+      description:
+        'Memes and shitposts are not generally allowed unless mods approve them first. The current About page also says there is a Sunday exception. Otherwise, they want that stuff somewhere like r/ProgrammerHumor.',
+    },
+    mustHaveTypes: ['day_of_week', 'semantic'],
+    mustNotHaveTypes: ['keyword', 'regex'],
+    semanticIncludes: ['meme', 'Do not match'],
+    day: 'Sunday',
+    dayNegate: true,
+  },
+  {
+    name: 'import r/csMajors AMAs surveys hiring referrals',
+    subredditRule: {
+      title: 'AMAs, surveys, hiring, and referrals',
+      description:
+        'You need mod approval before posting any AMA, survey, hiring post, or referral request/offer. For hiring, this rule is specifically about people or companies trying to recruit for their own org.',
+    },
+    mustHaveTypes: ['semantic'],
+    semanticIncludes: ['moderator approval', 'survey', 'hiring', 'referral'],
+  },
+  {
+    name: 'import r/csMajors resume sticky',
+    subredditRule: {
+      title: 'Resume sticky',
+      description:
+        'Don’t make standalone resume posts. Put resumes in the dedicated resume megathread, or use a sub like r/EngineeringResumes. Otherwise your post can get removed.',
+    },
+    mustHaveTypes: ['semantic'],
+    semanticIncludes: ['resume', 'sticky', 'general resume advice'],
+  },
+  {
+    name: 'import r/csMajors Amazon posts',
+    subredditRule: {
+      title: 'Amazon posts',
+      description:
+        'Amazon-related questions are supposed to go in the Amazon megathreads. The rule currently says this is only a recommendation, not a hard requirement, as of March 19, 2026.',
+    },
+    mustHaveTypes: ['keyword'],
+    allowedActions: ['log', 'flag'],
+  },
+  {
+    name: 'import r/csMajors online assessments',
+    subredditRule: {
+      title: 'Online assessments and interview questions',
+      description:
+        'You cannot discuss live OA questions. They define live as official CodeSignal assessment questions or questions currently being used in a company’s online assessment, no matter what platform the company uses. Practice questions are okay.',
+    },
+    mustHaveTypes: ['semantic'],
+    semanticIncludes: ['active/live', 'exact questions', 'practice', 'general preparation'],
+  },
+  {
+    name: 'import r/csMajors spam',
+    subredditRule: {
+      title: 'Spam',
+      description:
+        'No spam or promotional posting. Useful links are fine if they genuinely help the community, but if your real goal is to market something, farm clicks, or sneak in an ad disguised as a helpful post, it will probably get removed.',
+    },
+    mustHaveTypes: ['semantic'],
+    mustNotHaveTypes: ['regex'],
+    semanticIncludes: ['promotion', 'traffic', 'useful links'],
+  },
+  {
+    name: 'import r/csMajors lazy or low-quality',
+    subredditRule: {
+      title: 'Lazy or low-quality posts',
+      description:
+        'Posts need at least some effort. Examples include posts that are hard to understand, empty-body posts, low-effort crossposts, and poll posts with basically no context. They specifically mention which company should I choose posts that give no useful details.',
+    },
+    mustHaveTypes: ['semantic'],
+    mustNotHaveTypes: ['regex', 'post_type', 'title_length', 'body_length'],
+    semanticIncludes: ['missing necessary context', 'too little effort', 'concise but specific'],
+  },
+  {
+    name: 'import r/csMajors common questions',
+    subredditRule: {
+      title: 'Common questions',
+      description:
+        'Before posting, you are expected to search the sub and see whether your question has already been answered. If you ask something extremely repeated, that can get treated badly or removed.',
+    },
+    mustHaveTypes: ['semantic'],
+    mustNotHaveTypes: ['regex'],
+    semanticIncludes: ['do not claim to search', 'FAQ', 'new context'],
+  },
+  {
+    name: 'import r/csMajors AI LLMs',
+    subredditRule: {
+      title: 'AI Large Language Models (LLMs)',
+      description:
+        'LLM-generated content is not allowed. General AI discussion is allowed, especially if academic or technical, but repetitive low-quality AI questions, doomposting about AI wrecking CS or the job market, and self-promo for wrapper projects outside the project thread are not okay.',
+    },
+    mustHaveTypes: ['semantic'],
+    mustNotHaveTypes: ['keyword', 'regex'],
+    semanticIncludes: ['without claiming authorship', 'prompt', 'substantive discussion'],
+  },
+  {
+    name: 'import r/csMajors college comparisons',
+    subredditRule: {
+      title: 'College comparison posts',
+      description:
+        'College comparison threads are banned by default. Posts like UIUC vs Purdue vs Georgia Tech are not supposed to be normal standalone threads there anymore.',
+    },
+    mustHaveTypes: ['semantic'],
+    mustNotHaveTypes: ['regex'],
+    semanticIncludes: ['compare', 'choose', 'one school'],
+  },
+  {
+    name: 'import r/csMajors laptop posts',
+    subredditRule: {
+      title: 'Laptop posts',
+      description:
+        'Laptop recommendation posts are considered out of scope. They want those sent to r/SuggestALaptop or r/laptops instead. This includes posts asking the community to recommend a laptop for you.',
+    },
+    mustHaveTypes: ['semantic'],
+    semanticIncludes: ['buying', 'recommend', 'technical setup'],
+  },
+  {
+    name: 'import r/csMajors restricted posts',
+    subredditRule: {
+      title: 'Restricted posts',
+      description:
+        'Some topics are locked down unless a mod approves them first. Examples are Is CS for me, Regret majoring in CS, Job market is bad, UPS memes, H1B-related discussion, and general DEI discussion, except for Grace Hopper Celebration or specific company pipelines such as STEP or Explore.',
+    },
+    mustHaveTypes: ['semantic'],
+    semanticIncludes: ['restricted recurring', 'H1B', 'DEI', 'Grace Hopper', 'STEP', 'Explore'],
+  },
+  {
+    name: 'import r/csMajors personal projects',
+    subredditRule: {
+      title: 'Personal projects',
+      description:
+        'Personal project posts are supposed to go in the project showcase megathread. The only exception is if your project genuinely deserves its own thread, and in that case they want you to modmail first.',
+    },
+    mustHaveTypes: ['semantic'],
+    semanticIncludes: ['project showcase', 'generic feedback', 'substantive technical'],
+  },
+];
+
 function conditionTypes(rule: RuleConfigV2): Set<ConditionType> {
   return new Set(rule.conditions.map((condition) => condition.type));
 }
@@ -215,7 +379,40 @@ describeLive('RulePilot AI Builder live OpenAI smoke', () => {
       response = await draftRuleWithOpenAI({
         request: {
           mode: 'natural_language',
-          intent: testCase.intent,
+          intent: testCase.intent ?? testCase.name,
+          timezone: 'America/Chicago',
+          currentRules: [],
+        },
+        apiKey,
+        model: process.env.RULEPILOT_OPENAI_MODEL ?? 'gpt-5-nano',
+        validateDraft: (rule) => validateLiveDraft(testCase, rule),
+      });
+    } catch (error) {
+      if (error instanceof RuleBuilderGenerationError) {
+        throw new Error(`${error.message}\n${error.details.join('\n')}`);
+      }
+      throw error;
+    }
+
+    expect(response.status, testCase.name).toBe('draft');
+    if (response.status === 'draft') {
+      expect(response.rule.enabled, testCase.name).toBe(false);
+      expect(response.rule.conditions.length, testCase.name).toBeGreaterThan(0);
+    }
+  }, 180_000);
+
+  it.concurrent.each(CS_MAJORS_IMPORT_RULE_CASES)('imports $name with the real OpenAI API', async (testCase) => {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      throw new Error('Set OPENAI_API_KEY before running npm run test:ai-builder:live.');
+    }
+
+    let response;
+    try {
+      response = await draftRuleWithOpenAI({
+        request: {
+          mode: 'subreddit_rule',
+          subredditRule: testCase.subredditRule,
           timezone: 'America/Chicago',
           currentRules: [],
         },

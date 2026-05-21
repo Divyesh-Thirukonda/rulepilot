@@ -862,7 +862,7 @@ app.post('/api/rules/v2/import-subreddit-rules', async (c) => {
     const subredditRules = await subreddit.getRules();
     const drafts: RuleConfigV2[] = [];
     const errors: string[] = [];
-    for (const rule of subredditRules.slice(0, 10)) {
+    for (const rule of subredditRules) {
       const response = await draftRuleWithOpenAI({
         request: ruleBuilderRequest({
           mode: 'subreddit_rule',
