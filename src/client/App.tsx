@@ -740,9 +740,15 @@ function RuleEditor({
   timezone: string;
 }) {
   const [form, setForm] = useState<Partial<RuleConfigV2>>({ ...initial });
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const conditions = form.conditions ?? [];
   const setConditions = (c: RuleCondition[]) => setForm({ ...form, conditions: c });
   const selectedRoutingAction = routingActionDefinition(form.action ?? 'flag');
+
+  useEffect(() => {
+    setConfirmDelete(false);
+  }, [initial.id]);
+
   return (
     <div className="rule-editor">
       <div className="editor-grid">
@@ -770,7 +776,19 @@ function RuleEditor({
           <button className="primary-button" disabled={saving || !form.title?.trim()} onClick={() => onSave(form)} type="button">{saving ? 'Saving...' : (initial.id ? 'Save changes' : 'Create rule')}</button>
           <button className="secondary-button" onClick={onCancel} type="button">Cancel</button>
         </div>
-        {onDelete ? <button className="secondary-button danger-text editor-delete-button" onClick={onDelete} type="button">Delete rule</button> : null}
+        {onDelete ? (
+          <div className="editor-delete-zone">
+            {confirmDelete ? (
+              <div className="editor-delete-confirm" role="group" aria-label="Confirm rule deletion">
+                <span>Delete this rule?</span>
+                <button className="secondary-button" onClick={() => setConfirmDelete(false)} type="button">Cancel</button>
+                <button className="secondary-button danger-text" disabled={saving} onClick={onDelete} type="button">Delete</button>
+              </div>
+            ) : (
+              <button className="secondary-button danger-text editor-delete-button" disabled={saving} onClick={() => setConfirmDelete(true)} type="button">Delete rule</button>
+            )}
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -938,7 +956,6 @@ function RuleStudio({ rules, refresh, timezone }: { rules: RuleConfigV2[]; refre
     }
   };
   const handleDelete = async (ruleId: string) => {
-    if (!window.confirm('Delete this rule? This cannot be undone.')) return;
     setError(null);
     try {
       const response = await fetch(`/api/rules/v2/${ruleId}`, { method: 'DELETE' });

@@ -1150,6 +1150,7 @@ a:hover {
 .editor-actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   justify-content: space-between;
   padding-top: 4px;
@@ -1162,6 +1163,31 @@ a:hover {
 
 .editor-delete-button {
   margin-left: auto;
+}
+
+.editor-delete-zone {
+  display: flex;
+  justify-content: flex-end;
+  margin-left: auto;
+}
+
+.editor-delete-confirm {
+  align-items: center;
+  background: var(--rp-status-danger-bg);
+  border: 1px solid color-mix(in srgb, var(--rp-danger-plain) 35%, var(--rp-neutral-border));
+  border-radius: 6px;
+  color: var(--rp-danger-plain);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+  padding: 6px;
+}
+
+.editor-delete-confirm span {
+  font-size: 13px;
+  font-weight: 700;
+  padding: 0 4px;
 }
 
 .editor-divider {
