@@ -8,7 +8,7 @@ import type {
   RuleBuilderResponse, RulePilotSettings,
 } from '../shared/types';
 import { ROUTING_ACTIONS, routingActionDefinition, routingActionLabel, routingActionStatusClass } from '../shared/actions';
-import { createRepairDraftUrl, createSubredditDraftUrl, redirectForRule, redirectTargetUrl } from '../shared/redirects';
+import { createRepairDraftUrl } from '../shared/redirects';
 import './styles.css';
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -315,45 +315,6 @@ function ruleTitle(rules: RuleConfigV2[], ruleId: string | null): string {
   return ruleId ? (rules.find((r) => r.id === ruleId)?.title ?? ruleId) : 'No rule';
 }
 
-function RoutingPanel({ item, rule }: { item: CaseRecord; rule: RuleConfigV2 | undefined }) {
-  const redirect = redirectForRule(rule);
-  const [copied, setCopied] = useState(false);
-  if (!redirect) return null;
-  const href = item.postPermalink ? new URL(item.postPermalink, 'https://www.reddit.com').toString() : undefined;
-  const targetUrl = redirectTargetUrl(redirect);
-  const draftUrl = createSubredditDraftUrl({
-    redirect,
-    postTitle: item.postTitle,
-    postPermalink: href,
-  });
-  const copyGuidance = async () => {
-    try {
-      await navigator.clipboard.writeText(redirect.template);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1500);
-    } catch {
-      window.prompt('Copy routing guidance', redirect.template);
-    }
-  };
-  return (
-    <section className="detail-section routing-panel">
-      <div className="routing-heading">
-        <div>
-          <h3>Routing guidance</h3>
-          <span>{redirect.legacy ? 'Legacy guidance' : redirect.targetType}</span>
-        </div>
-        <strong>{redirect.target}</strong>
-      </div>
-      <p>{redirect.template}</p>
-      <div className="routing-actions">
-        <button className="secondary-button" type="button" onClick={() => void copyGuidance()}>{copied ? 'Copied' : 'Copy guidance'}</button>
-        {targetUrl ? <a className="secondary-button link-button" href={targetUrl} rel="noreferrer" target="_blank">Open target</a> : null}
-        {draftUrl ? <a className="secondary-button link-button" href={draftUrl} rel="noreferrer" target="_blank">Create draft to {redirect.target}</a> : null}
-      </div>
-    </section>
-  );
-}
-
 function RepairPanel({ item, rule }: { item: CaseRecord; rule: RuleConfigV2 | undefined }) {
   const [copied, setCopied] = useState(false);
   const template = rule?.repairTemplate?.trim();
@@ -467,7 +428,6 @@ function CaseDetail({ item, rules, onSaved }: { item: CaseRecord | undefined; ru
       <section className="detail-section"><h3>Rationale</h3><p>{item.result.rationale}</p>{item.result.actionReason ? <p className="action-reason">{item.result.actionReason}</p> : null}</section>
       {evidence.length ? <section className="detail-section"><h3>Evidence</h3><ul>{evidence.map((evidenceItem, index) => <li key={`${evidenceItem.field}-${index}`}><strong>{evidenceItem.field}</strong>{evidenceItem.excerpt ? `: ${evidenceItem.excerpt}` : ''}<span>{evidenceItem.note}</span></li>)}</ul></section> : null}
       <section className="detail-section"><h3>Signals</h3><ul>{signals.map((s) => <li key={s}>{s}</li>)}</ul></section>
-      <RoutingPanel item={item} rule={matchedRule} />
       <RepairPanel item={item} rule={matchedRule} />
       <section className="detail-section"><h3>Review</h3><div className="detail-actions"><FeedbackButton postId={item.postId} feedback="correct" onSaved={onSaved}>Correct</FeedbackButton><FeedbackButton postId={item.postId} feedback="false_positive" onSaved={onSaved}>False positive</FeedbackButton></div>{item.actionError ? <p className="error-note">{item.actionError}</p> : null}</section>
       {href ? <a className="post-link" href={href} rel="noreferrer" target="_blank">Open post</a> : null}

@@ -33,7 +33,7 @@ Note: Whenever more things need to be added to the todo like when you discover n
 - [ ] Record screenshots for app listing and Devpost:
   - [ ] dashboard overview;
   - [ ] case row with explanation;
-  - [ ] enabled rules list;
+  - [ ] Rule Studio rule list;
   - [ ] moderator feedback buttons;
   - [ ] install settings.
 - [ ] Add a short demo script showing submission, triage, dashboard review, and feedback.
@@ -71,7 +71,7 @@ Note: Whenever more things need to be added to the todo like when you discover n
   - [ ] evidence snippets;
   - [ ] rationale;
   - [ ] suggested moderator action;
-  - [ ] redirect guidance;
+  - [x] remove case-detail redirect/routing guidance from the hackathon demo surface;
   - [ ] feedback history.
 - ... [ ] Add sorting by newest, confidence, rule, and action.
 - ... [ ] Improve mobile layout for moderator review on phones.
@@ -160,7 +160,8 @@ Think like we're basically giving them conditions (datetime = sunday [from datet
 - [x] Move to different subreddit: Add a "Create draft to r/X" button: when a post is rerouted, send the user a message with a pre-filled draft link so they can easily repost to the suggested subreddit instead of just being told "post elsewhere" (like how it says please post to r/X instead and a create draft button can be messaged to the user in that case).
   - [x] MVP opens a moderator-facing Reddit submit URL only; it does not send the author a DM.
 - [x] Avoid automated unsolicited DMs. Prefer moderator-confirmed comments, removal reasons, or dashboard copy.
-  - [x] Dashboard shows copy/open/draft controls only after a case matches a redirect-configured rule.
+  - [x] Removed the case-detail routing guidance panel from the final demo UI.
+  - [x] Kept redirect metadata editable in Rule Studio without showing the legacy guidance block in Recent Cases.
 - ... [ ] Escalate to ban: Escalate to mod with suggested temporary ban (12 hours by default, duration editable by mod) — mod must confirm before any account action is taken.
 - ... [ ] Keep account actions out of the MVP. For spammer rules, show "escalate to mod" / "suggest temporary ban (X hours/days)" only after explicit moderator confirmation and only if Devvit API support and policy review are clear.
 - ... [x] If the rule the author violated is fixable, allow the mod to create a new post for the user with the same content as the original but with the rule fixed (maybe the edited post can just be sent back to the user as a draft for them ready to be posted, they can choose to edit it further if needed). For example, if a user posts a meme on a weekday, the mod can send the user a DM with the meme as a draft with instructions to post on a weekend post instead (or it could be a draft and instead of instructions, we have it scheduled for the weekend automatically, but again the user might not understand why it's scheduled for the weekend so maybe an instruction note would be needed in the dm). Plan this out, and idek if this is a featue in the devvit so figure that out too.
@@ -183,10 +184,13 @@ Think like we're basically giving them conditions (datetime = sunday [from datet
 - [x] Consider an MCP-esque internal architecture for local development if it helps, but do not add platform complexity unless it clearly improves the product.
   - [x] Chose ordinary server helpers and one structured OpenAI call; no MCP-style runtime added for the hackathon MVP.
 - [x] Button to auto-import all written rules from in the subreddit rule section and auto-populate the rules for no rules exist in studio (like they're yet to be imported) and of course some rules may not exist, for which an llm prompt will be generated to generate the rules based on the subreddit's content and the moderator's intent.
+  - [x] Remove the previous 10-rule import cap so all subreddit rules returned by Devvit `getRules()` are drafted.
+  - [x] Add live OpenAI import-mode audit coverage for the 15 r/csMajors-style written rules.
 - [x] Keep the AI Builder focused on natural-language rule drafting and subreddit-rule import.
   - [x] Remove one-click template buttons from the Rule Studio demo surface.
   - [x] Update the natural-language placeholder to `only allow satire / ragebait posts on Sundays`.
   - [x] Hide `Import subreddit rules` after the first successful import in the current browser.
+  - [x] Harden common-rule generation so subjective rules avoid fake keyword/regex gates and deterministic conditions are required only for explicit fields such as URL domain, flair, post type, length, day, and time.
 - [x] Add validation so AI-generated rules cannot:
   - [x] inspect author history;
   - [x] call unapproved external services;
@@ -206,6 +210,7 @@ Think like we're basically giving them conditions (datetime = sunday [from datet
   - [x] move import/export/subreddit-rule import controls outside and below the Rule Studio panel, centered.
   - [x] replace the header `+` with a single Rule Studio `+` action below the rules that opens the AI Builder in a modal.
   - [x] show generated drafts below the existing rule list so mods can manually edit the full rule before saving.
+  - [x] Replace sandbox-blocked `window.confirm()` delete flow with inline delete confirmation in the rule editor.
 
 ## P1: Common Rule Library
 
