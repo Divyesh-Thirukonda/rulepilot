@@ -14,13 +14,15 @@ I have an app on my phone called Routines, which allows you to create custom rou
 
 ## What it does
 
+RulePilot is split into 2 tabs. The main attraction is the Rule Studio, where mods can build or import their subreddit's community guidelines. If they choose to build it, they can use AI to pre-populate some of the fields (not necessary). 
+
 RulePilot scans new posts, explains likely rule matches, and gives mods a dashboard for reviewing cases. It ships with an r/csMajors starter pack, but mods can also create and import their own rules in Rule Studio.
 
 RulePilot also includes an AI Builder that helps mods draft new rules from natural language or existing subreddit rules. Generated rules are saved as disabled drafts so mods can review, test, edit, and enable them when ready. The builder is designed for common moderator requests like spam, AI slop, low-effort posts, rude engagement, surveys, hiring/referrals, resume megathreads, homework boundaries, live interview/OA content, off-topic posts, buying advice, restricted recurring topics, formatting rules, and project showcases.
 
-For violations that are fixable, RulePilot can show mods repair guidance and open a fixed-post draft link. The draft includes the original post link and instructions for what to change, but it does not automatically message users, schedule reposts, or store the full original post body.
+For violations that are fixable, RulePilot can show mods repair guidance and open a fixed-post draft link. The draft includes the original post link and instructions for what to change.
 
-The goal is not to make moderation fully automatic. RulePilot turns fuzzy community guidelines into reviewable rules, shows why a post matched, and gives moderators a safer way to tune the system through examples, thresholds, simulator checks, and feedback.
+The goal is not to make moderation fully automatic. RulePilot turns community guidelines into rules (detected with various boolean logic) and gives moderators a safer way to tune the system through examples, thresholds, simulator checks, and feedback.
 
 ## How we built it
 
@@ -44,14 +46,10 @@ The data flow also feels clean, since the data structure we're passing in to the
 
 ## What we learned
 
-The biggest lesson was that moderation tools need to be designed around workflow, not just classification. A correct prediction is only useful if moderators can understand it, review it quickly, and adjust the system when it gets something wrong.
-
-We also learned that “AI for moderation” works best when it is narrow, transparent, and configurable. RulePilot became stronger when we treated AI as one part of a larger rule system instead of the whole product.
+The biggest lesson was that moderation tools need to be designed around workflow, not just classification. A correct prediction is only useful if moderators can understand it, review it quickly, and adjust the system when it gets something wrong. We also learned that “AI for moderation” works best when it is for grunt work, and provides the human-in-the-loop an easy way to review the AI output. RulePilot strengths came from treating AI as just a part of a larger rule system.
 
 ## What's next for RulePilot
 
-Next, we want to complete live playtesting, collect moderator feedback, and tune the LLM prompts for the r/csMajors starter pack against more posts. Some false-positive patterns need to be learned incrementally from moderator feedback instead of only through static examples. For example, r/csmajors users traditionally dislike posts about the hiring scene in India, since it is drasitically different from the US. But it's hard to pinpoint that. The best we humans can do is look for keywords like 'placement' or 'B.Tech' which are more popular in non-US job market. Although that's a good starting point, we are still missing many other keywords and phrases and opens the possibility to many FPs. 
+Next, we want to collect moderator feedback, and tune the LLM prompts for the r/csMajors starter pack against more posts. Some false-positive patterns need to be learned incrementally from moderator feedback instead of only through static examples. For example, r/csmajors users traditionally dislike posts about the hiring scene in India, since it is drasitically different from the US. But it's hard to pinpoint that. The best we humans can do is look for keywords like 'placement' or 'B.Tech' which are more popular in non-US job market. Although that's a good starting point, we are still missing many other keywords and phrases and opens the possibility to many FPs. 
 
-After that, we want to add more reusable rule packs for education and career communities, improve the AI Builder, and expand the dashboard with filters, sorting, and trend views.
-
-RulePilot could become a shared rule-building layer for moderators: a place to turn community guidelines into a testable playground for experimentation and reusable moderation workflows.
+RulePilot could become a shared rule-building layer for moderators. It could be a place to turn community guidelines into a playground for experimentation and reusable moderation workflows.
