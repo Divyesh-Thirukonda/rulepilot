@@ -9,6 +9,7 @@ import type {
 } from '../shared/types';
 import { ROUTING_ACTIONS, routingActionDefinition, routingActionLabel, routingActionStatusClass } from '../shared/actions';
 import { createRepairDraftUrl } from '../shared/redirects';
+import { generateRuleId } from '../shared/rules';
 import './styles.css';
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -463,8 +464,19 @@ function emptyCondition(): RuleCondition {
   return { type: 'keyword', field: 'title_and_body', value: '' };
 }
 
-function emptyRule(): Partial<RuleConfigV2> {
+function emptyRule(): Omit<RuleConfigV2, 'id' | 'createdAt' | 'updatedAt' | 'source'> {
   return { title: '', description: '', examples: [], negativeExamples: [], action: 'flag', threshold: 0.76, category: 'quality', enabled: false, conditions: [emptyCondition()], redirect: '', modNotes: '' };
+}
+
+function emptyRuleDraft(): RuleConfigV2 {
+  const now = new Date().toISOString();
+  return {
+    ...emptyRule(),
+    id: generateRuleId(),
+    createdAt: now,
+    updatedAt: now,
+    source: 'custom',
+  };
 }
 
 function ConditionRow({ condition, onChange, onRemove }: { condition: RuleCondition; onChange: (c: RuleCondition) => void; onRemove: () => void }) {
@@ -804,21 +816,33 @@ function RuleBuilder({ onDraft, onClose }: { onDraft: (rule: RuleConfigV2) => vo
     }
   };
 
+  const handleDraftRule = () => {
+    const trimmedIntent = intent.trim();
+    if (!trimmedIntent) {
+      setError(null);
+      setQuestions([]);
+      onDraft(emptyRuleDraft());
+      onClose();
+      return;
+    }
+    void draftFromBody('natural', { mode: 'natural_language', intent: trimmedIntent });
+  };
+
   return (
     <section className="rule-builder">
       <div className="rule-builder-heading">
         <div>
-          <h3>RulePilot AI Builder</h3>
+          <h3>RulePilot Builder</h3>
           <span>Generate disabled drafts for moderators to review, simulate, and save.</span>
         </div>
         <button className="secondary-button" disabled={loading !== null} onClick={onClose} type="button">Close</button>
       </div>
       <div className="builder-prompt-row">
         <label className="editor-field full">
-          <span>Describe the rule you want</span>
+          <span>Describe the rule you want (optional)</span>
           <textarea rows={3} value={intent} onChange={(e) => setIntent(e.target.value)} placeholder="Example: only allow satire / ragebait posts on Sundays" />
         </label>
-        <button className="primary-button" disabled={loading !== null || !intent.trim()} onClick={() => void draftFromBody('natural', { mode: 'natural_language', intent })}>
+        <button className="primary-button" disabled={loading !== null} onClick={handleDraftRule}>
           {loading === 'natural' ? (
             <span className="drafting-label">
               <span>Drafting</span>
@@ -1020,9 +1044,6 @@ function RuleStudio({ rules, refresh, timezone }: { rules: RuleConfigV2[]; refre
   return (
     <div className="rule-studio-wrap">
       <section className="rule-studio">
-        <div className="rs-header">
-          <div><h2>Rule Studio</h2><span>{localRules.length} rules</span></div>
-        </div>
         {error ? <div className="rule-studio-error" role="alert">{error}</div> : null}
         {needsRefresh ? <div className="rule-studio-sync"><span>Rule changes saved.</span><button className="secondary-button" type="button" onClick={() => void refreshFromServer()}>Save changes</button></div> : null}
         <div className="rs-list">

@@ -763,27 +763,6 @@ a:hover {
   gap: 14px;
 }
 
-.rs-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 14px;
-  border-bottom: 1px solid var(--rp-neutral-border-weak);
-}
-
-.rs-header h2 {
-  margin: 0;
-  font-size: 16px;
-}
-
-.rs-header span {
-  color: var(--rp-neutral-content-weak);
-  font-size: 12px;
-  margin-top: 2px;
-  display: block;
-}
-
 .rs-footer-actions {
   display: flex;
   flex-wrap: wrap;

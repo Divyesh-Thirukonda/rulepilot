@@ -211,6 +211,8 @@ Think like we're basically giving them conditions (datetime = sunday [from datet
   - [x] replace the header `+` with a single Rule Studio `+` action below the rules that opens the AI Builder in a modal.
   - [x] show generated drafts below the existing rule list so mods can manually edit the full rule before saving.
   - [x] Replace sandbox-blocked `window.confirm()` delete flow with inline delete confirmation in the rule editor.
+  - [x] Remove the redundant Rule Studio title/count header above the rule list.
+  - [x] Make the Rule Builder prompt optional so `Draft rule` can open a blank disabled rule template.
 
 ## P1: Common Rule Library
 

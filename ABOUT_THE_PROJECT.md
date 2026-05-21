@@ -14,15 +14,11 @@ I have an app on my phone called Routines, which allows you to create custom rou
 
 ## What it does
 
-RulePilot is split into 2 tabs. The main attraction is the Rule Studio, where mods can build or import their subreddit's community guidelines. If they choose to build it, they can use AI to pre-populate some of the fields (not necessary). 
+RulePilot is split into 2 tabs. The main attraction is the Rule Studio, where mods can build or import their subreddit's community guidelines. If they choose to build it, they can use AI to pre-populate some of the fields (not necessary though). The rules can become complicated, but we split it up into conditions and actions. The conditions include positive and negative examples, boolean logic conditions (includes regex, day of week, URL domain, and even a semantic AI detection), and a threshold. We also allow mods to simulate whether a post would be detected by current rule's conditions they've set up so far. On the actions side, we have routing actions (mod queue, flag it, or just log it), redirect the post to a megathread or another subreddit, or fix the post for the user so it does not violate the rule. These rules can be disabled, enabled, tested, and edited at any time.
 
-RulePilot scans new posts, explains likely rule matches, and gives mods a dashboard for reviewing cases. It ships with an r/csMajors starter pack, but mods can also create and import their own rules in Rule Studio.
+The other tab lets you view the cases. As users post, mods can see each case and review how RulePilot handled it. The AI explains likely rule matches. It comes with an r/csMajors starter pack, but mods can also create and import their own rules in Rule Studio.
 
-RulePilot also includes an AI Builder that helps mods draft new rules from natural language or existing subreddit rules. Generated rules are saved as disabled drafts so mods can review, test, edit, and enable them when ready. The builder is designed for common moderator requests like spam, AI slop, low-effort posts, rude engagement, surveys, hiring/referrals, resume megathreads, homework boundaries, live interview/OA content, off-topic posts, buying advice, restricted recurring topics, formatting rules, and project showcases.
-
-For violations that are fixable, RulePilot can show mods repair guidance and open a fixed-post draft link. The draft includes the original post link and instructions for what to change.
-
-The goal is not to make moderation fully automatic. RulePilot turns community guidelines into rules (detected with various boolean logic) and gives moderators a safer way to tune the system through examples, thresholds, simulator checks, and feedback.
+The builder is designed for common moderator requests like spam, AI slop, low-effort posts, rude engagement, surveys, hiring/referrals, resume megathreads, homework boundaries, live interview/OA content, off-topic posts, buying advice, restricted recurring topics, formatting rules, and project showcases. The goal is not to make moderation fully automatic. RulePilot turns community guidelines into rules (detected with various boolean logic) and gives moderators a safer way to tune the system through examples, thresholds, simulator checks, and feedback.
 
 ## How we built it
 
