@@ -42,6 +42,7 @@ Note: Whenever more things need to be added to the todo like when you discover n
   - [x] Run `OPENAI_API_KEY=... npm run test:ai-builder:live` before the final demo.
   - [x] Add and run `npm run test:classification:live` for real OpenAI classification schema/evidence smoke testing before the final demo.
 - [ ] Fill out app listing copy, privacy policy link, terms link, and support/contact path.
+  - [x] Refresh README and Devpost/app-listing draft copy to match the current Rule Studio, Cases, and RulePilot Builder UX.
 - [ ] Publish only after verifying post-delete cleanup and Redis retention behavior in playtest logs.
 
 ## P1: UX And Design Polish
