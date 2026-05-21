@@ -30,21 +30,17 @@ The classifier combines deterministic checks for obvious cases with optional Ope
 
 On the moderator side, the dashboard shows recent cases, matched rules, and feedback. Rule Studio lets mods create, edit, disable, import, export, simulate, and AI-draft rules, with clear separation between rule conditions and the actions RulePilot should take. New AI-drafted rules start from a moderator prompt or imported subreddit rule, then return to the full editor for review.
 
-## Challenges we ran into
+## Challenges
 
-The hardest part was keeping the tool powerful without making it too aggressive. Moderation workflows need trust, so RulePilot had to explain its reasoning and let moderators make the final call on everything.
+The semantic identifier was tricky, since describing a rule can get complicated (such as AI slop detection). By going through 20 AI generated posts and analysing them, I was able to lock down some common patterns that makes it obvious an LLM was used. Adding this to our rule detector was simple from there. 
 
-Another challenge was designing rules that work beyond one subreddit. r/csMajors gave us a concrete starting point, but the app needed to become a reusable system where mods can define their own rules, actions, and repair guidance.
+Another challenege was integrating well with existing mod tools rather than building something with duplicate functionality. Reddit has some really solid mod tools, like the AI detector for example. I wasn't able to find an easy way to utilize it (since I know it exists in the r/wallstreetbets sub). But we tried our best to create something that would work well with the existing mod tools (the mod queue, for example) and provide additional value to moderators, as a helpful add on, not something that would completely replace what mods already use. 
 
-Finally, another challenge was integrating well with existing mod tools rather than building something with duplicate functionality. Reddit has some really solid mod tools, and it would be a shame to completely replace them with our own. Instead, we wanted to create something that would work well with the existing mod tools and provide additional value to moderators, as a helpful add on, not something that would completely replace what mods already use.
+## Accomplishments
 
-## Accomplishments that we're proud of
+I'm really happy with the way the UX came out, especially how easy it is to adopt the tool, since the 'import from subreddit rules' is just a click away. I think everything feels intuitive and easy to use.
 
-We built a launch-ready moderation console with case review, rule editing, false-positive feedback, fixed-post draft guidance, and AI-assisted rule creation.
-
-We made the r/csMajors use case concrete while still keeping the app reusable for other communities. Mods can install the starter pack, customize it, or generate their own disabled draft rules from natural-language intent or their community’s written rules.
-
-We also designed RulePilot to work with Reddit’s existing moderation stack. AutoModerator can continue handling deterministic rules, while RulePilot focuses on nuanced cases that benefit from explanation and moderator judgment.
+The data flow also feels clean, since the data structure we're passing in to the context has enough data for our AI to understand and respond in another strucutre that let's use scaffold a draft rule.
 
 ## What we learned
 
