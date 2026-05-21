@@ -28,19 +28,19 @@ We built RulePilot as a Devvit app with a server-side moderation pipeline, Redis
 
 The classifier combines deterministic checks for obvious cases with optional OpenAI structured-output classification for ambiguous rule matches. Rules are stored per subreddit as editable `RuleConfigV2` objects, with conditions for keywords, regex, flair, post type, URL domains, title/body length, day of week, time windows, and semantic rubrics.
 
-[lie] On the moderator side, the dashboard shows recent cases, confidence, matched rules, actions, feedback, redirect guidance, and current rule configuration. Rule Studio lets mods create, edit, disable, import, export, simulate, and AI-draft rules, with clear separation between rule conditions and the actions RulePilot should take. New AI-drafted rules start from a single plus action that opens a focused builder modal, then returns the generated draft to the full editor for moderator review.
+On the moderator side, the dashboard shows recent cases, matched rules, and feedback. Rule Studio lets mods create, edit, disable, import, export, simulate, and AI-draft rules, with clear separation between rule conditions and the actions RulePilot should take. New AI-drafted rules start from a moderator prompt or imported subreddit rule, then return to the full editor for review.
 
 ## Challenges we ran into
 
 The hardest part was keeping the tool powerful without making it too aggressive. Moderation workflows need trust, so RulePilot had to explain its reasoning and let moderators make the final call on everything.
 
-Another challenge was designing rules that work beyond one subreddit. r/csMajors gave us a concrete starting point, but the app needed to become a reusable system where mods can define their own rules and routing guidance.
+Another challenge was designing rules that work beyond one subreddit. r/csMajors gave us a concrete starting point, but the app needed to become a reusable system where mods can define their own rules, actions, and repair guidance.
 
-Finally, and probably the most important part, was integrating well with existing mod tools rather than building something with duplicate functionality. Reddit has some really solid mod tools, and it would be a shame to completely replace them with our own. Instead, we wanted to create something that would work well with the existing mod tools and provide additional value to moderators, as a helpful add on, not something that would completely replace what mods already use.
+Finally, another challenge was integrating well with existing mod tools rather than building something with duplicate functionality. Reddit has some really solid mod tools, and it would be a shame to completely replace them with our own. Instead, we wanted to create something that would work well with the existing mod tools and provide additional value to moderators, as a helpful add on, not something that would completely replace what mods already use.
 
 ## Accomplishments that we're proud of
 
-We built a launch-ready moderation console with case review, rule editing, false-positive feedback, redirect guidance, and AI-assisted rule creation.
+We built a launch-ready moderation console with case review, rule editing, false-positive feedback, fixed-post draft guidance, and AI-assisted rule creation.
 
 We made the r/csMajors use case concrete while still keeping the app reusable for other communities. Mods can install the starter pack, customize it, or generate their own disabled draft rules from natural-language intent or their community’s written rules.
 
