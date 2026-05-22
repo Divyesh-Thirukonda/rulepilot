@@ -4,7 +4,7 @@
 
 I opened Reddit and a few posts on r/csmajors had shown up. One of them was clearly a spam post trying to market his own app, which was against the rules of the subreddit. Granted it was taken down by a moderator, but not before 3 people had commented "spam" on it. If only AutoModerator could have caught it.
 
-Moderators often deal with rules that are easy for humans to understand but hard to express with regex. In r/csMajors, for example, posts about Amazon get routed to a megathread, posts about live online assessments are not allowed, and posts about programming humor should be sent to a different subreddit. In some communities, weekday memes are ONLY allowed on Sundays. These rules all need different handling, far too complex for a moderator to code out from scratch using reddit's limited auto mod features.
+Moderators often deal with rules that are easy for humans to understand but hard to express with regex. In r/csMajors, for example, posts about Amazon get routed to a megathread, posts about live online assessments are not allowed, and posts about programming humor should be sent to a different subreddit. In some communities, weekday memes are ONLY allowed on Sundays. These rules all need different handling, which is usually far too complex for reddit's limited auto mod features.
 
 RulePilot started to solve this problem. Give mods a practical way to enforce community rules.
 
@@ -42,10 +42,10 @@ The data flow also feels clean, since the data structure we're passing in to the
 
 ## What we learned
 
-The biggest lesson was that moderation tools need to be designed around workflow, not just classification. A correct prediction is only useful if moderators can understand it, review it quickly, and adjust the system when it gets something wrong. We also learned that “AI for moderation” works best when it is for grunt work, and provides the human-in-the-loop an easy way to review the AI output. RulePilot strengths came from treating AI as just a part of a larger rule system.
+The biggest lesson was that moderation tools need to be designed around workflow, not just classification. A correct prediction is only useful if moderators can understand, review, and adjust the system when it gets something wrong. We also learned that “AI for moderation” works best when it is for grunt work, and provides the human-in-the-loop an easy way to review the AI output. RulePilot strengths came from treating AI as just a part of a larger rule system.
 
 ## What's next for RulePilot
 
-Next, we want to collect moderator feedback, and tune the LLM prompts for the r/csMajors starter pack against more posts. Some false-positive patterns need to be learned incrementally from moderator feedback instead of only through static examples. For example, r/csmajors users traditionally dislike posts about the hiring scene in India, since it is drasitically different from the US. But it's hard to pinpoint that. The best we humans can do is look for keywords like 'placement' or 'B.Tech' which are more popular in non-US job market. Although that's a good starting point, we are still missing many other keywords and phrases and opens the possibility to many FPs. 
+Next, we want to collect moderator feedback, and tune the LLM prompts for the r/csMajors starter pack against more posts. Some false-positive patterns need to be learned incrementally from moderator feedback instead of only through static examples. For example, r/csmajors users traditionally dislike posts about the hiring scene in India, since it is drasitically different from the US. But it's hard to pinpoint that. The best we humans can do is look for keywords like 'placement' or 'B.Tech' which are more popular in non-US job market. Although that's a good starting point, we are still missing many other keywords and phrases and opens the possibility to many FPs.
 
-RulePilot could become a shared rule-building layer for moderators. It could be a place to turn community guidelines into a playground for experimentation and reusable moderation workflows.
+Once it's a good product, I would like to see the semantic layer / positive and negative examples added to the current automation tool.
