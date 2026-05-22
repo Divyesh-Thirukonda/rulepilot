@@ -48,10 +48,18 @@ describe('deterministicClassifyPost', () => {
     expect(result?.suggestedAction).toBe('filter_to_modqueue');
   });
 
-  it('keeps nuanced OA handling semantic instead of keyword-only', () => {
+  it('uses semantic-first OA handling with a deterministic catch for obvious exact-question requests', () => {
     const live = deterministicClassifyPost(
       post({
         title: 'Got the live CodeSignal OA today, what is the answer to question 2?',
+      }),
+      CS_MAJORS_PRESET,
+      monday
+    );
+    const exactInterview = deterministicClassifyPost(
+      post({
+        title: 'help with meta interview',
+        body: 'what were questions for new grad interview on 9/17/2025',
       }),
       CS_MAJORS_PRESET,
       monday
@@ -66,12 +74,41 @@ describe('deterministicClassifyPost', () => {
     );
 
     const liveOaRule = CS_MAJORS_PRESET.find((rule) => rule.id === 'live-oa-questions');
-    expect(live).toBeNull();
+    expect(live?.ruleId).toBe('live-oa-questions');
+    expect(exactInterview?.ruleId).toBe('live-oa-questions');
+    expect(exactInterview?.suggestedAction).toBe('filter_to_modqueue');
+    expect(exactInterview?.matchedSignals).toContain('asks for exact OA/interview questions');
     expect(practice?.ruleId).not.toBe('live-oa-questions');
     expect(liveOaRule?.conditions).toEqual([
       expect.objectContaining({ type: 'semantic' }),
     ]);
     expect(liveOaRule?.conditions[0]?.value).toContain('Do not match practice resources');
+  });
+
+  it('does not deterministically flag general company interview prep as exact-question leakage', () => {
+    const result = deterministicClassifyPost(
+      post({
+        title: 'How should I prepare for a Meta new grad interview?',
+        body: 'Looking for topics to study and format tips, not actual questions.',
+      }),
+      CS_MAJORS_PRESET,
+      monday
+    );
+
+    expect(result?.ruleId).not.toBe('live-oa-questions');
+  });
+
+  it('does not treat interviewer-question advice as assessment question leakage', () => {
+    const result = deterministicClassifyPost(
+      post({
+        title: 'What questions should I ask my Meta interviewer?',
+        body: 'I want good questions about team culture and mentorship.',
+      }),
+      CS_MAJORS_PRESET,
+      monday
+    );
+
+    expect(result?.ruleId).not.toBe('live-oa-questions');
   });
 
   it('models meme timing as a deterministic precondition plus semantic content rubric', () => {

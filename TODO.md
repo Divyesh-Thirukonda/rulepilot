@@ -135,6 +135,7 @@ Think like we're basically giving them conditions (datetime = sunday [from datet
 - [x] Upgrade the five r/csMajors starter rules to semantic-first classifier rubrics instead of keyword-only gates.
 - [x] Sync authoritative preset rules over existing `source: preset` Redis copies so playtest installs see the improved seeded rules.
 - [x] Harden classification OpenAI calls against Devvit HTTP deadline errors with compact payloads, output caps, low reasoning effort, retry, and sanitized timeout messages.
+- [x] Strengthen the OA/interview starter rule so exact company interview-question requests, including dated retrospective requests, route to the OA/interview rule instead of slipping into allowed or low-quality.
 - ... [ ] Add a circuit breaker:
   - [ ] disable LLM calls after repeated failures;
   - [ ] fall back to deterministic-only mode;

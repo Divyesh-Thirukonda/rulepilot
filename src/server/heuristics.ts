@@ -336,6 +336,33 @@ function evaluateOutOfScope(
   return { matched: false, signals: [], hasSemanticCondition: false };
 }
 
+function evaluateSensitiveAssessmentQuestions(post: PostInput): ConditionEngineResult {
+  const text = searchableText(post).toLowerCase();
+
+  const hasAssessmentContext =
+    /\b(online assessment|oa|codesignal|hacker\s?rank|karat|interview|technical screen|phone screen)\b/.test(text);
+  const asksForExactQuestions =
+    /\b(what were|what are|which|anyone know|does anyone know|share|remember|recall|got|asked|seen)\b.{0,80}\b(question|questions|prompt|prompts|problem|problems)\b/.test(text) ||
+    /\bwhat\b.{0,40}\banswer\b.{0,40}\b(question|questions|prompt|prompts|problem|problems)\b/.test(text) ||
+    /\b(question|questions|prompt|prompts|problem|problems)\b.{0,80}\b(asked|got|seen|from|for|during)\b/.test(text);
+  const concreteRecruitingContext =
+    /\b(meta|amazon|google|microsoft|apple|netflix|nvidia|openai|stripe|databricks|roblox|palantir|bloomberg|codesignal|hacker\s?rank|karat|new grad|intern|internship|swe)\b/.test(text) ||
+    /\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/.test(text);
+  const practiceOrPrepOnly =
+    /\b(practice|mock|prep|prepare|study|resources|topic|topics|format|behavioral|tips|leetcode|neetcode|guide|roadmap)\b/.test(text) &&
+    !/\b(exact|real|actual|what were|what are|asked|got|share|questions from)\b/.test(text);
+
+  if (hasAssessmentContext && asksForExactQuestions && concreteRecruitingContext && !practiceOrPrepOnly) {
+    return {
+      matched: true,
+      signals: ['asks for exact OA/interview questions', 'real recruiting context'],
+      hasSemanticCondition: false,
+    };
+  }
+
+  return { matched: false, signals: [], hasSemanticCondition: false };
+}
+
 // ---------------------------------------------------------------------------
 // Main: deterministic classification
 // ---------------------------------------------------------------------------
@@ -388,6 +415,8 @@ export function deterministicClassifyPost(
       }
     } else if (rule.id === 'out-of-scope' && rule.source === 'preset') {
       result = evaluateOutOfScope(post, rule, timezone, now);
+    } else if (rule.id === 'live-oa-questions' && rule.source === 'preset') {
+      result = evaluateSensitiveAssessmentQuestions(post);
     } else {
       result = evaluateConditions(post, rule.conditions, timezone, now);
     }

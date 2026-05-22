@@ -23,10 +23,11 @@ const memeRubric = [
 ].join(' ');
 
 const liveOaRubric = [
-  'Match when the post asks for, shares, requests solutions to, or discusses exact active/live online-assessment or interview questions currently used by a company or official platform such as CodeSignal, HackerRank, or a company OA.',
-  'Strong matches include posts saying they received the OA today/recently, naming a company assessment, asking for the answer to a specific problem number, or sharing exact question text from an active assessment.',
-  'Do not match practice resources, mock tests, LeetCode/NeetCode prep, general interview study advice, high-level non-specific interview experiences, or questions that clearly avoid active/real assessment content.',
-  'If the post mentions OA/interviews but it is unclear whether the question is live, official, or practice-only, choose needs_review.',
+  'Match when the post asks for, shares, requests solutions to, or discusses exact online-assessment or company interview questions from a real recruiting process.',
+  'Strong matches include posts saying they received the OA today/recently, naming a company assessment, asking for the answer to a specific problem number, sharing exact question text, or asking what questions were asked in a named company interview.',
+  'Treat exact company interview-question requests as sensitive even when the post gives a past interview date; do not mark them allowed solely because the date is historical.',
+  'Do not match practice resources, mock tests, LeetCode/NeetCode prep, general interview study advice, high-level non-specific interview experiences, or questions that ask about topics/format without soliciting exact questions.',
+  'If the post mentions OA/interviews and appears to solicit exact real assessment/interview content but live/NDA status is unclear, choose needs_review for this rule.',
 ].join(' ');
 
 const lowQualityRubric = [
