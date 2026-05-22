@@ -134,6 +134,7 @@ Think like we're basically giving them conditions (datetime = sunday [from datet
   - [x] AI/LLM policy should classify policy topic, not AI-authorship.
 - [x] Upgrade the five r/csMajors starter rules to semantic-first classifier rubrics instead of keyword-only gates.
 - [x] Sync authoritative preset rules over existing `source: preset` Redis copies so playtest installs see the improved seeded rules.
+- [x] Harden classification OpenAI calls against Devvit HTTP deadline errors with compact payloads, output caps, low reasoning effort, retry, and sanitized timeout messages.
 - ... [ ] Add a circuit breaker:
   - [ ] disable LLM calls after repeated failures;
   - [ ] fall back to deterministic-only mode;

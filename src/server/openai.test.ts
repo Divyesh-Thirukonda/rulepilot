@@ -168,11 +168,17 @@ describe('parseOpenAIClassificationResponse', () => {
     const body = JSON.parse(requestInit?.body as string);
     const userPayload = JSON.parse(body.input[1].content);
 
+    expect(body).toMatchObject({
+      max_output_tokens: 900,
+      reasoning: { effort: 'low' },
+    });
     expect(body.text.format.schema.properties.ruleId.anyOf[0].enum).toEqual(['out-of-scope']);
     expect(userPayload.enabledRules[0]).toMatchObject({
       id: 'out-of-scope',
       suggestedActionForViolation: 'filter_to_modqueue',
     });
+    expect(userPayload.enabledRules[0]).not.toHaveProperty('redirectTemplate');
+    expect(userPayload.enabledRules[0]).not.toHaveProperty('modNotes');
     expect(userPayload.deterministicPrechecks[0]).toMatchObject({
       ruleId: 'out-of-scope',
       hasSemanticConditions: true,
@@ -181,5 +187,66 @@ describe('parseOpenAIClassificationResponse', () => {
     expect(userPayload.outputContract).toMatchObject({
       evidence: '0-5 visible evidence objects with field, excerpt, and note',
     });
+  });
+
+  it('retries transient classification failures with the compact request', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response('temporary gateway timeout', { status: 504 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        output_text: JSON.stringify({
+          decision: 'allowed',
+          ruleId: null,
+          confidence: 0.31,
+          rationale: 'No enabled rule clearly applies.',
+          suggestedAction: 'allow',
+          matchedSignals: [],
+          evidence: [],
+          actionReason: 'No action.',
+        }),
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await classifyWithOpenAI({
+      post: {
+        id: 't3_retry',
+        title: 'Normal CS course planning question',
+        body: 'Should I take compilers before operating systems?',
+        subredditName: 'csMajors',
+        createdAt: new Date('2026-05-18T17:00:00.000Z'),
+      },
+      rules: CS_MAJORS_PRESET.slice(0, 1),
+      apiKey: 'test-key',
+      model: 'gpt-5-nano',
+      timezone: 'America/Chicago',
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(result.decision).toBe('allowed');
+  });
+
+  it('sanitizes repeated Devvit HTTP deadline failures', async () => {
+    const fetchMock = vi.fn(async () => {
+      throw new Error('4 DEADLINE_EXCEEDED: Post "https://plugins.devvit.net/devvit.plugin.http.HTTP/Fetch": context deadline exceeded');
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(classifyWithOpenAI({
+      post: {
+        id: 't3_timeout',
+        title: 'test',
+        body: '',
+        subredditName: 'csMajors',
+        createdAt: new Date('2026-05-18T17:00:00.000Z'),
+      },
+      rules: CS_MAJORS_PRESET.slice(0, 1),
+      apiKey: 'test-key',
+      model: 'gpt-5-nano',
+      timezone: 'America/Chicago',
+    })).rejects.toThrow('OpenAI classification timed out through Devvit HTTP fetch');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

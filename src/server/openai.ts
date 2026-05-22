@@ -16,6 +16,12 @@ const EVIDENCE_FIELDS: ClassificationEvidence['field'][] = [
   'other',
 ];
 
+const CLASSIFICATION_TIMEOUT_MS = 6_500;
+const CLASSIFICATION_MAX_ATTEMPTS = 2;
+const CLASSIFICATION_MAX_OUTPUT_TOKENS = 900;
+const BODY_EXCERPT_MAX_CHARS = 1_500;
+const RULE_TEXT_MAX_CHARS = 900;
+
 function openAIClassificationSchema(rules: RuleConfigV2[]) {
   const ruleIds = rules.map((rule) => rule.id);
   const ruleIdSchema = ruleIds.length > 0
@@ -233,7 +239,7 @@ function postForModel(post: PostInput, timezone: string): Record<string, unknown
     subredditName: post.subredditName,
     title,
     titleExcerpt: title.slice(0, 300),
-    bodyExcerpt: body.slice(0, 3500),
+    bodyExcerpt: body.slice(0, BODY_EXCERPT_MAX_CHARS),
     flairText: post.flairText,
     urlDomain,
     hasOutboundUrl: Boolean(urlDomain),
@@ -246,35 +252,48 @@ function postForModel(post: PostInput, timezone: string): Record<string, unknown
   };
 }
 
+function compactText(value: string | undefined, maxLength = RULE_TEXT_MAX_CHARS): string | undefined {
+  const text = value?.replace(/\s+/g, ' ').trim();
+  if (!text) {
+    return undefined;
+  }
+  return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
+}
+
+function compactList(items: string[], maxItems = 3, maxLength = 160): string[] | undefined {
+  const compacted = items
+    .map((item) => compactText(item, maxLength))
+    .filter((item): item is string => Boolean(item))
+    .slice(0, maxItems);
+  return compacted.length > 0 ? compacted : undefined;
+}
+
 function ruleForModel(rule: RuleConfigV2): Record<string, unknown> {
   const semanticConditions = rule.conditions.filter((condition) => condition.type === 'semantic');
   const deterministicConditions = rule.conditions.filter((condition) => condition.type !== 'semantic');
   return {
     id: rule.id,
     title: rule.title,
-    description: rule.description,
+    description: compactText(rule.description, 420),
     action: rule.action,
     suggestedActionForViolation: suggestedActionForRoutingAction(rule.action),
     threshold: rule.threshold,
     category: rule.category,
-    examples: rule.examples,
-    negativeExamples: rule.negativeExamples.length > 0 ? rule.negativeExamples : undefined,
-    redirectTargetType: rule.redirectTargetType,
-    redirectTarget: rule.redirectTarget,
-    redirectTemplate: rule.redirectTemplate,
-    redirect: rule.redirect,
-    semanticRubrics: semanticConditions.map((condition) => condition.value),
+    examples: compactList(rule.examples),
+    negativeExamples: compactList(rule.negativeExamples),
+    semanticRubrics: semanticConditions
+      .map((condition) => compactText(condition.value))
+      .filter((value): value is string => Boolean(value)),
     deterministicConditionCount: deterministicConditions.length,
-    conditions: rule.conditions.map((c) => ({
+    deterministicConditions: deterministicConditions.map((c) => ({
       type: c.type,
       field: c.field,
-      value: c.value,
+      value: compactText(c.value, 240),
       negate: c.negate || undefined,
       days: c.days,
       min: c.min,
       max: c.max,
     })),
-    modNotes: rule.modNotes || undefined,
   };
 }
 
@@ -349,6 +368,83 @@ export function buildOpenAIClassificationInput(options: {
   };
 }
 
+function isTimeoutLikeError(error: unknown): boolean {
+  if (error instanceof DOMException && error.name === 'AbortError') {
+    return true;
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return /deadline_exceeded|context deadline exceeded|timeout|timed out|abort/i.test(message);
+}
+
+function sanitizedClassificationError(error: unknown): Error {
+  const message = error instanceof Error ? error.message : String(error);
+  if (isTimeoutLikeError(error)) {
+    return new Error('OpenAI classification timed out through Devvit HTTP fetch. RulePilot logged the post instead of taking action.');
+  }
+  return new Error(message.replace(/https:\/\/plugins\.devvit\.net\/[^\s"]+/g, 'Devvit HTTP fetch'));
+}
+
+function shouldRetryOpenAIError(error: unknown): boolean {
+  if (isTimeoutLikeError(error)) {
+    return true;
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return /\b(408|409|429|5\d\d)\b|temporarily unavailable|rate limit|fetch failed|network/i.test(message);
+}
+
+async function fetchOpenAIClassification(options: {
+  post: PostInput;
+  rules: RuleConfigV2[];
+  apiKey: string;
+  model: string;
+  timezone: string;
+  now?: Date | undefined;
+}): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), CLASSIFICATION_TIMEOUT_MS);
+  try {
+    return await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${options.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: options.model,
+        max_output_tokens: CLASSIFICATION_MAX_OUTPUT_TOKENS,
+        reasoning: { effort: 'low' },
+        input: [
+          {
+            role: 'system',
+            content:
+              'You are RulePilot, a fast, conservative human-in-the-loop subreddit moderation triage assistant. Classify only against enabled rules. Prefer needs_review or insufficient_context over violation when evidence is weak. Return concise JSON only.',
+          },
+          {
+            role: 'user',
+            content: JSON.stringify(buildOpenAIClassificationInput({
+              post: options.post,
+              rules: options.rules,
+              timezone: options.timezone,
+              now: options.now,
+            })),
+          },
+        ],
+        text: {
+          format: {
+              type: 'json_schema',
+              name: 'rulepilot_classification',
+              strict: true,
+              schema: openAIClassificationSchema(options.rules),
+            },
+          },
+        }),
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 export async function classifyWithOpenAI(options: {
   post: PostInput;
   rules: RuleConfigV2[];
@@ -357,45 +453,28 @@ export async function classifyWithOpenAI(options: {
   timezone: string;
   now?: Date | undefined;
 }): Promise<ClassificationResult> {
-  const response = await fetch('https://api.openai.com/v1/responses', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${options.apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: options.model,
-      input: [
-        {
-          role: 'system',
-          content:
-            'You are RulePilot, a conservative human-in-the-loop subreddit moderation triage assistant. Classify only against the enabled rules in the user payload. Never make irreversible moderation recommendations. Prefer needs_review or insufficient_context over violation when evidence is weak.',
-        },
-        {
-          role: 'user',
-          content: JSON.stringify(buildOpenAIClassificationInput({
-            post: options.post,
-            rules: options.rules,
-            timezone: options.timezone,
-            now: options.now,
-          })),
-        },
-      ],
-      text: {
-        format: {
-            type: 'json_schema',
-            name: 'rulepilot_classification',
-            strict: true,
-            schema: openAIClassificationSchema(options.rules),
-          },
-        },
-      }),
-  });
-
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`OpenAI classification failed: ${response.status} ${body.slice(0, 300)}`);
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= CLASSIFICATION_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      const response = await fetchOpenAIClassification(options);
+      if (!response.ok) {
+        const body = await response.text();
+        const error = new Error(`OpenAI classification failed: ${response.status} ${body.slice(0, 300)}`);
+        if (attempt < CLASSIFICATION_MAX_ATTEMPTS && shouldRetryOpenAIError(error)) {
+          lastError = error;
+          continue;
+        }
+        throw error;
+      }
+      return parseOpenAIClassificationResponse(await response.json());
+    } catch (error) {
+      lastError = error;
+      if (attempt < CLASSIFICATION_MAX_ATTEMPTS && shouldRetryOpenAIError(error)) {
+        continue;
+      }
+      throw sanitizedClassificationError(error);
+    }
   }
 
-  return parseOpenAIClassificationResponse(await response.json());
+  throw sanitizedClassificationError(lastError);
 }
