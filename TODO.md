@@ -132,6 +132,8 @@ Think like we're basically giving them conditions (datetime = sunday [from datet
   - [x] out-of-scope should require strong evidence;
   - [x] low-quality should default to needs-review;
   - [x] AI/LLM policy should classify policy topic, not AI-authorship.
+- [x] Upgrade the five r/csMajors starter rules to semantic-first classifier rubrics instead of keyword-only gates.
+- [x] Sync authoritative preset rules over existing `source: preset` Redis copies so playtest installs see the improved seeded rules.
 - ... [ ] Add a circuit breaker:
   - [ ] disable LLM calls after repeated failures;
   - [ ] fall back to deterministic-only mode;

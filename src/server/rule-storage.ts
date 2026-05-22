@@ -6,6 +6,7 @@ import type { RuleConfigV2 } from '../shared/types';
 const RULES_KEY_PREFIX = 'rulepilot:rules:';
 const MAX_RULES = 50;
 const ACTIVE_PRESET_RULE_IDS = new Set(CS_MAJORS_PRESET.map((rule) => rule.id));
+const PRESET_RULE_IDS = new Set(CS_MAJORS_PRESET.map((rule) => rule.id));
 
 function rulesKey(subredditName: string): string {
   return `${RULES_KEY_PREFIX}${subredditName.toLowerCase()}`;
@@ -27,19 +28,29 @@ function pruneDeprecatedPresetRules(rules: RuleConfigV2[]): RuleConfigV2[] {
   return rules.filter((rule) => rule.source !== 'preset' || ACTIVE_PRESET_RULE_IDS.has(rule.id));
 }
 
+function syncAuthoritativePresetRules(rules: RuleConfigV2[]): { rules: RuleConfigV2[]; changed: boolean } {
+  const customRules = rules.filter((rule) => rule.source !== 'preset' && !PRESET_RULE_IDS.has(rule.id));
+  const synced = [...CS_MAJORS_PRESET, ...customRules];
+  return {
+    rules: synced,
+    changed: JSON.stringify(synced) !== JSON.stringify(rules),
+  };
+}
+
 /** Get all rules for a subreddit, seeding from preset if none exist. */
 export async function getSubredditRules(subredditName: string): Promise<RuleConfigV2[]> {
   const raw = await redis.get(rulesKey(subredditName));
   const existing = parseRules(raw);
   if (existing && existing.length > 0) {
     const pruned = pruneDeprecatedPresetRules(existing);
-    if (pruned.length !== existing.length) {
-      await saveSubredditRules(subredditName, pruned);
-    }
     if (pruned.length === 0) {
       return seedPresetIfEmpty(subredditName);
     }
-    return pruned;
+    const synced = syncAuthoritativePresetRules(pruned);
+    if (synced.changed || pruned.length !== existing.length) {
+      await saveSubredditRules(subredditName, synced.rules);
+    }
+    return synced.rules;
   }
   return seedPresetIfEmpty(subredditName);
 }

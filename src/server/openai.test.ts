@@ -124,7 +124,8 @@ describe('parseOpenAIClassificationResponse', () => {
     expect(payload.deterministicPrechecks).toEqual(expect.arrayContaining([
       expect.objectContaining({
         ruleId: 'out-of-scope',
-        hasSemanticConditions: false,
+        hasSemanticConditions: true,
+        deterministicPreconditionsPass: true,
       }),
     ]));
   });
@@ -174,7 +175,8 @@ describe('parseOpenAIClassificationResponse', () => {
     });
     expect(userPayload.deterministicPrechecks[0]).toMatchObject({
       ruleId: 'out-of-scope',
-      hasSemanticConditions: false,
+      hasSemanticConditions: true,
+      deterministicPreconditionsPass: true,
     });
     expect(userPayload.outputContract).toMatchObject({
       evidence: '0-5 visible evidence objects with field, excerpt, and note',

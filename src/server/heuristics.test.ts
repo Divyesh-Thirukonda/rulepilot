@@ -28,6 +28,10 @@ describe('deterministicClassifyPost', () => {
       'live-oa-questions',
       'low-quality',
     ]);
+    for (const rule of CS_MAJORS_PRESET) {
+      const semantic = rule.conditions.find((condition) => condition.type === 'semantic');
+      expect(semantic?.value.length, rule.id).toBeGreaterThan(250);
+    }
   });
 
   it('routes career-only posts to out-of-scope guidance', () => {
@@ -44,7 +48,7 @@ describe('deterministicClassifyPost', () => {
     expect(result?.suggestedAction).toBe('filter_to_modqueue');
   });
 
-  it('flags live OA question discussion but allows practice OA prep', () => {
+  it('keeps nuanced OA handling semantic instead of keyword-only', () => {
     const live = deterministicClassifyPost(
       post({
         title: 'Got the live CodeSignal OA today, what is the answer to question 2?',
@@ -61,28 +65,41 @@ describe('deterministicClassifyPost', () => {
       monday
     );
 
-    expect(live?.ruleId).toBe('live-oa-questions');
+    const liveOaRule = CS_MAJORS_PRESET.find((rule) => rule.id === 'live-oa-questions');
+    expect(live).toBeNull();
     expect(practice?.ruleId).not.toBe('live-oa-questions');
+    expect(liveOaRule?.conditions).toEqual([
+      expect.objectContaining({ type: 'semantic' }),
+    ]);
+    expect(liveOaRule?.conditions[0]?.value).toContain('Do not match practice resources');
   });
 
-  it('applies weekday meme filtering and Sunday meme exception', () => {
+  it('models meme timing as a deterministic precondition plus semantic content rubric', () => {
     const weekday = deterministicClassifyPost(post({ title: 'POV: your DSA midterm compiles', flairText: 'Shitpost' }), CS_MAJORS_PRESET, monday);
     const weekend = deterministicClassifyPost(post({ title: 'POV: your DSA midterm compiles', flairText: 'Shitpost' }), CS_MAJORS_PRESET, sunday);
+    const memeRule = CS_MAJORS_PRESET.find((rule) => rule.id === 'shitposts-and-memes');
 
-    expect(weekday?.ruleId).toBe('shitposts-and-memes');
-    expect(weekday?.suggestedAction).toBe('filter_to_modqueue');
-    expect(weekend?.ruleId).toBe('shitposts-and-memes');
-    expect(weekend?.suggestedAction).toBe('allow');
+    expect(weekday).toBeNull();
+    expect(weekend).toBeNull();
+    expect(memeRule?.conditions).toEqual([
+      expect.objectContaining({ type: 'day_of_week', days: ['Sunday'], negate: true }),
+      expect.objectContaining({ type: 'semantic' }),
+    ]);
   });
 
-  it('matches lazy or low-quality posts', () => {
+  it('keeps low-quality handling semantic instead of body-length keyword gating', () => {
     const result = deterministicClassifyPost(
       post({ title: 'Need advice', body: 'help' }),
       CS_MAJORS_PRESET,
       monday
     );
+    const lowQualityRule = CS_MAJORS_PRESET.find((rule) => rule.id === 'low-quality');
 
-    expect(result?.ruleId).toBe('low-quality');
+    expect(result).toBeNull();
+    expect(lowQualityRule?.action).toBe('flag');
+    expect(lowQualityRule?.conditions).toEqual([
+      expect.objectContaining({ type: 'semantic' }),
+    ]);
   });
 
   it('matches literal keyword phrases with symbols instead of treating them like regex words', () => {

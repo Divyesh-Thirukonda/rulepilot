@@ -33,8 +33,8 @@ describe('policy', () => {
   it('requires both global and rule-specific thresholds before action', () => {
     const lowerGlobal: RulePilotSettings = { ...settings, confidenceThreshold: 0.6 };
     expect(shouldAct(result(0.73), settings, enabledRules(settings))).toBe(false);
-    expect(shouldAct(result(0.75), lowerGlobal, enabledRules(lowerGlobal))).toBe(true);
-    expect(shouldAct(result(0.77), settings, enabledRules(settings))).toBe(true);
+    expect(shouldAct(result(0.77), lowerGlobal, enabledRules(lowerGlobal))).toBe(false);
+    expect(shouldAct(result(0.79), settings, enabledRules(settings))).toBe(true);
   });
 
   it('does not act on allowed decisions', () => {
